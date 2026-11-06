@@ -355,7 +355,28 @@ export function buildMainReplyKeyboard(): TelegramReplyKeyboardMarkup {
 /**
  * Bàn phím Inline cho lệnh tiết kiệm nhanh
  */
-export function buildSavingInlineKeyboard(targetAmount: number): TelegramInlineKeyboardMarkup {
+export function buildSavingInlineKeyboard(
+  targetAmount: number,
+  todaySavedAmount: number = 0
+): TelegramInlineKeyboardMarkup {
+  if (todaySavedAmount > 0) {
+    return {
+      inline_keyboard: [
+        [
+          { text: '➕ Nạp thêm +50k', callback_data: 'save:add_50000' },
+          { text: '➕ +100k', callback_data: 'save:add_100000' },
+        ],
+        [
+          { text: '➕ +200k', callback_data: 'save:add_200000' },
+          { text: '➕ +500k', callback_data: 'save:add_500000' },
+        ],
+        [
+          { text: '❌ Hủy lượt bỏ hôm nay', callback_data: 'save:cancel' },
+        ],
+      ],
+    };
+  }
+
   return {
     inline_keyboard: [
       [
@@ -403,12 +424,14 @@ export function buildSavingPromptMessage(
           : ` (Còn thiếu ${formatVND(target - savedAmount)})`)
       : '⏳ Hôm nay bạn chưa ghi nhận để dành tiền.',
     '',
-    '💡 <i>Bạn có thể bấm nút chọn nhanh bên dưới hoặc gõ số tiền trực tiếp vào khung chat (Ví dụ: <code>161k</code>, <code>200k</code>, <code>50k</code>, <code>1tr5</code>)...</i>',
+    isSaved
+      ? '💡 <i>Bạn đã hoàn thành hôm nay! Nếu muốn nạp thêm, bấm các nút cộng thêm bên dưới hoặc gõ trực tiếp số tiền (VD: 50k, 100k)...</i>'
+      : '💡 <i>Bạn có thể bấm nút chọn nhanh bên dưới hoặc gõ số tiền trực tiếp vào khung chat (Ví dụ: <code>161k</code>, <code>200k</code>, <code>50k</code>, <code>1tr5</code>)...</i>',
   ].filter(Boolean);
 
   return {
     text: lines.join('\n'),
-    replyMarkup: buildSavingInlineKeyboard(target),
+    replyMarkup: buildSavingInlineKeyboard(target, savedAmount),
   };
 }
 
@@ -419,12 +442,20 @@ export function buildSavingSuccessMessage(
   savedAmount: number,
   overview: ScheduleOverview,
   newFundBalance: number,
-  isUpdate: boolean = false
+  isUpdate: boolean = false,
+  addedAmount?: number
 ): { text: string; replyMarkup: TelegramInlineKeyboardMarkup } {
   const target = overview.base_daily_target || 162000;
   const isExceeded = savedAmount > target;
   const isExact = savedAmount === target;
   const isUnder = savedAmount < target;
+
+  let title = '✅ <b>ĐÃ GHI NHẬN BỎ HEO HÔM NAY!</b>';
+  if (addedAmount && addedAmount > 0) {
+    title = `🎉 <b>ĐÃ NẠP THÊM +${formatVND(addedAmount)} HÔM NAY!</b>`;
+  } else if (isUpdate) {
+    title = '✅ <b>ĐÃ CẬP NHẬT BỎ HEO HÔM NAY!</b>';
+  }
 
   let evaluation = '';
   if (isExact) {
@@ -436,9 +467,11 @@ export function buildSavingSuccessMessage(
   }
 
   const lines = [
-    `✅ <b>${isUpdate ? 'ĐÃ CẬP NHẬT' : 'ĐÃ GHI NHẬN'} BỎ HEO HÔM NAY!</b>`,
+    title,
     '',
-    `💰 Số tiền hôm nay: <b>${formatVND(savedAmount)}</b>`,
+    addedAmount && addedAmount > 0
+      ? `➕ Nạp thêm: <b>+${formatVND(addedAmount)}</b>\n💰 Tổng hôm nay đã để dành: <b>${formatVND(savedAmount)}</b>`
+      : `💰 Số tiền hôm nay: <b>${formatVND(savedAmount)}</b>`,
     evaluation,
     '',
     `🏦 <b>Số dư quỹ trả nợ hiện có: ${formatVND(newFundBalance)}</b>`,
@@ -453,9 +486,13 @@ export function buildSavingSuccessMessage(
     replyMarkup: {
       inline_keyboard: [
         [
+          { text: '➕ Nạp thêm +50k', callback_data: 'save:add_50000' },
+          { text: '➕ +100k', callback_data: 'save:add_100000' },
+        ],
+        [
           { text: '📊 Xem nợ', callback_data: 'view:debt' },
           { text: '💰 Xem quỹ', callback_data: 'view:fund' },
-          { text: '❌ Hủy bỏ lượt hôm nay', callback_data: 'save:cancel' },
+          { text: '❌ Hủy bỏ', callback_data: 'save:cancel' },
         ],
       ],
     },

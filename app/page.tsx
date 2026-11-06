@@ -94,7 +94,7 @@ export default function HomePage() {
   };
 
   // Ghi nhận để dành tiền hôm nay (tick hoặc nhập số tiền tùy chọn) - Cập nhật tức thì 0ms (Optimistic UI)
-  const handleSaveDailySaving = async (amount: number) => {
+  const handleSaveDailySaving = async (amount: number, options?: { preserveFund?: boolean }) => {
     // 1. Cập nhật giao diện ngay lập tức không cần chờ mạng
     setOverview((prev) => {
       if (!prev) return prev;
@@ -109,11 +109,19 @@ export default function HomePage() {
       const res = await fetch('/api/savings', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ date: todayStr, amount }),
+        body: JSON.stringify({
+          date: todayStr,
+          amount,
+          preserveFund: options?.preserveFund,
+        }),
       });
       const data = await res.json();
       if (data.success) {
-        showToast(`Đã để dành ${formatVND(amount)} cho ngày hôm nay!`);
+        showToast(
+          options?.preserveFund
+            ? `Đã xác nhận ${formatVND(amount)} từ quỹ cho hôm nay!`
+            : `Đã để dành ${formatVND(amount)} cho ngày hôm nay!`
+        );
         if (data.overview) {
           setOverview(data.overview);
         }

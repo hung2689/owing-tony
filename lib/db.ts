@@ -545,18 +545,23 @@ export async function getSavingForDate(dateStr: string): Promise<DailySavingReco
  * Ghi nhận để dành tiền cho một ngày (tick 161k hoặc nhập số tiền lớn hơn):
  * - Nếu ngày này đã có trước đó: cộng dồn hoặc cập nhật số tiền chênh lệch vào quỹ
  * - Nếu ngày này chưa có: cộng toàn bộ số tiền vào quỹ
+ * - Nếu options.preserveFund = true: chỉ ghi log tiết kiệm mà không tăng quỹ lại (dành cho trường hợp đã nạp sẵn vào quỹ)
  */
 export async function recordDailySaving(
   dateStr: string,
-  amount: number
+  amount: number,
+  options?: { preserveFund?: boolean }
 ): Promise<{ success: boolean; newFund: number; record: DailySavingRecord }> {
   const settings = await getSettings();
   const existing = await getSavingForDate(dateStr);
   const oldAmount = existing ? existing.amount : 0;
-  const diff = amount - oldAmount;
-  const newFund = Math.max(0, settings.fund_balance + diff);
 
-  await updateFundBalance(newFund);
+  let newFund = settings.fund_balance;
+  if (!options?.preserveFund) {
+    const diff = amount - oldAmount;
+    newFund = Math.max(0, settings.fund_balance + diff);
+    await updateFundBalance(newFund);
+  }
 
   const sb = getSupabase();
   const record: DailySavingRecord = {

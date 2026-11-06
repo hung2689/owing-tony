@@ -16,12 +16,14 @@ export async function POST(req: Request) {
   }
 
   try {
-    const { date, amount } = await req.json();
+    const { date, amount, preserveFund } = await req.json();
     if (!date || typeof amount !== 'number' || amount <= 0) {
       return NextResponse.json({ error: 'Ngày và số tiền không hợp lệ.' }, { status: 400 });
     }
 
-    const result = await recordDailySaving(date, amount);
+    const result = await recordDailySaving(date, amount, {
+      preserveFund: Boolean(preserveFund),
+    });
     const todayStr = getTodayVNString();
     const [loans, todaySaving, savingsHistory] = await Promise.all([
       getLoans(),

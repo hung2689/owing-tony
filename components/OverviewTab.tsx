@@ -31,7 +31,7 @@ interface OverviewTabProps {
   todayStr: string;
   savingsHistory: DailySavingRecord[];
   onUpdateFund: (newFund: number) => Promise<void>;
-  onSaveDailySaving: (amount: number) => Promise<void>;
+  onSaveDailySaving: (amount: number, options?: { preserveFund?: boolean }) => Promise<void>;
   onCancelDailySaving: () => Promise<void>;
   onTickPayment: (loanId: string) => Promise<void>;
   onUndoPayment: () => Promise<void>;
@@ -57,6 +57,7 @@ export default function OverviewTab({
   const [fundInput, setFundInput] = useState('');
   const [isSavingFund, setIsSavingFund] = useState(false);
   const [showCustomModal, setShowCustomModal] = useState(false);
+  const [modalMode, setModalMode] = useState<'set' | 'add'>('set');
   const [customAmountInput, setCustomAmountInput] = useState('');
   const [isSubmittingDaily, setIsSubmittingDaily] = useState(false);
 
@@ -101,16 +102,31 @@ export default function OverviewTab({
     setCustomAmountInput(num.toLocaleString('vi-VN'));
   };
 
-  // Nạp số tiền tùy chỉnh cho hôm nay
+  // Nạp hoặc cộng thêm số tiền cho hôm nay
   const handleCustomSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const parsed = Number(customAmountInput.replace(/[^0-9]/g, ''));
     if (!parsed || parsed <= 0) return;
     setIsSubmittingDaily(true);
-    await onSaveDailySaving(parsed);
+    if (modalMode === 'add') {
+      const current = overview.today_saved_amount || 0;
+      await onSaveDailySaving(current + parsed);
+    } else {
+      await onSaveDailySaving(parsed);
+    }
     setIsSubmittingDaily(false);
     setShowCustomModal(false);
     setCustomAmountInput('');
+  };
+
+  // Xác nhận số tiền hiện có trong quỹ đã bao gồm khoản tiết kiệm hôm nay (không cộng dồn thêm quỹ)
+  const handleConfirmFundAsTodaySaving = async () => {
+    const target = overview.base_daily_target > 0 ? overview.base_daily_target : 162000;
+    const amountToConfirm = Math.min(fundBalance, target);
+    if (amountToConfirm <= 0) return;
+    setIsSubmittingDaily(true);
+    await onSaveDailySaving(amountToConfirm, { preserveFund: true });
+    setIsSubmittingDaily(false);
   };
 
   // Các khoản đến hạn trong 14 ngày tới
@@ -137,49 +153,25 @@ export default function OverviewTab({
   return (
     <div className="space-y-6 pb-12">
       {/* KHỐI NỔI BẬT: CHECKLIST TIẾT KIỆM HÔM NAY */}
-      <section className="bg-gradient-to-br from-[var(--surface)] to-[var(--surface-raised)] border-2 border-[var(--accent)]/40 rounded-2xl p-5 sm:p-6 shadow-md space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5">
-            <div className="w-10 h-10 rounded-xl bg-[var(--accent)] text-white flex items-center justify-center shrink-0 shadow-sm">
-              <PiggyBank className="w-6 h-6" />
-            </div>
-            <div>
-              <h2 className="text-base sm:text-lg font-bold tracking-tight flex items-center gap-2">
-                <span>Mục tiêu tiết kiệm hôm nay ({formatDateVN(todayStr)})</span>
-                {overview.is_today_saved && (
-                  <span
-                    className={`px-2 py-0.5 rounded-full text-xs font-bold flex items-center gap-1 ${
-                      overview.today_saved_amount >= overview.base_daily_target
-                        ? 'bg-[var(--success-bg)] text-[var(--success)]'
-                        : 'bg-[var(--warning-bg)] text-[var(--warning)]'
-                    }`}
-                  >
-                    <Check className="w-3.5 h-3.5 stroke-[3]" />
-                    {overview.today_saved_amount >= overview.base_daily_target
-                      ? 'Đã hoàn thành'
-                      : 'Đã bỏ một phần'}
-                  </span>
-                )}
-              </h2>
-              <p className="text-xs text-[var(--muted)]">
-                Bỏ heo mỗi ngày để đủ tiền trước hạn. Có thể bỏ ít hơn hoặc nhiều hơn tùy khả năng.
-              </p>
+      {!overview.is_today_saved ? (
+        /* TRẠNG THÁI CHƯA TIẾT KIỆM HÔM NAY: HIỆN CHỈ TIÊU & NÚT TICK */
+        <section className="bg-gradient-to-br from-[var(--surface)] to-[var(--surface-raised)] border-2 border-[var(--accent)]/40 rounded-2xl p-5 sm:p-6 shadow-md space-y-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <div className="w-10 h-10 rounded-xl bg-[var(--accent)] text-white flex items-center justify-center shrink-0 shadow-sm">
+                <PiggyBank className="w-6 h-6" />
+              </div>
+              <div>
+                <h2 className="text-base sm:text-lg font-bold tracking-tight">
+                  Mục tiêu tiết kiệm hôm nay ({formatDateVN(todayStr)})
+                </h2>
+                <p className="text-xs text-[var(--muted)]">
+                  Bỏ heo mỗi ngày để đủ tiền trước hạn. Có thể bỏ ít hơn hoặc nhiều hơn tùy khả năng.
+                </p>
+              </div>
             </div>
           </div>
 
-          {/* Trạng thái & nút hủy tick */}
-          {overview.is_today_saved && (
-            <button
-              onClick={onCancelDailySaving}
-              className="text-xs text-[var(--muted)] hover:text-[var(--danger)] underline self-start sm:self-auto transition-colors"
-            >
-              Hủy lượt bỏ hôm nay
-            </button>
-          )}
-        </div>
-
-        {/* Nội dung tương tác */}
-        {!overview.is_today_saved ? (
           <div className="bg-[var(--surface)] border border-[var(--border)] rounded-xl p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="space-y-1">
               <span className="text-xs uppercase font-bold tracking-wider text-[var(--muted)]">
@@ -211,6 +203,7 @@ export default function OverviewTab({
 
               <button
                 onClick={() => {
+                  setModalMode('set');
                   setCustomAmountInput('');
                   setShowCustomModal(true);
                 }}
@@ -221,66 +214,125 @@ export default function OverviewTab({
               </button>
             </div>
           </div>
-        ) : (
-          <div
-            className={`border rounded-xl p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 ${
-              overview.today_saved_amount >= overview.base_daily_target
-                ? 'bg-[var(--success-bg)]/50 border-[var(--success)]/40'
-                : 'bg-[var(--warning-bg)]/50 border-[var(--warning)]/40'
-            }`}
-          >
-            <div className="space-y-1">
-              <div
-                className={`flex items-center gap-2 font-bold text-sm ${
-                  overview.today_saved_amount >= overview.base_daily_target
-                    ? 'text-[var(--success)]'
-                    : 'text-[var(--warning)]'
-                }`}
+
+          {/* Hộp gợi ý thông minh nếu trong quỹ đã có sẵn tiền */}
+          {fundBalance > 0 && (
+            <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 animate-fadeIn">
+              <div className="text-xs text-amber-800 dark:text-amber-200 space-y-0.5">
+                <div className="font-bold flex items-center gap-1.5">
+                  <span>💡 Quỹ trả nợ đang có: <strong>{formatVND(fundBalance)}</strong></span>
+                </div>
+                <p className="opacity-90">
+                  Nếu bạn đã bỏ tiền này hôm nay, bấm xác nhận bên dưới để hoàn thành ngay mà không làm tăng trùng số dư quỹ:
+                </p>
+              </div>
+              <button
+                type="button"
+                disabled={isSubmittingDaily}
+                onClick={handleConfirmFundAsTodaySaving}
+                className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition-all shrink-0 active:scale-95 shadow-sm flex items-center justify-center gap-1.5"
               >
-                {overview.today_saved_amount >= overview.base_daily_target ? (
-                  <CheckCircle2 className="w-5 h-5 shrink-0" />
-                ) : (
-                  <AlertTriangle className="w-5 h-5 shrink-0" />
-                )}
-                <span>Hôm nay đã để dành: {formatVND(overview.today_saved_amount)}</span>
-                {overview.today_saved_amount < overview.base_daily_target && (
-                  <span className="text-xs font-medium text-[var(--muted)]">
-                    (thiếu {formatVND(overview.base_daily_target - overview.today_saved_amount)})
+                <Check className="w-4 h-4 stroke-[3]" />
+                <span>Xác nhận đã bỏ {formatVND(Math.min(fundBalance, targetToday))} hôm nay</span>
+              </button>
+            </div>
+          )}
+        </section>
+      ) : (
+        /* TRẠNG THÁI ĐÃ HOÀN THÀNH TIẾT KIỆM HÔM NAY: BIỂU TƯỢNG ĂN MỪNG & NÚT NẠP THÊM TIỀN TO NỔI BẬT */
+        <section className="bg-gradient-to-br from-emerald-500/10 via-teal-500/5 to-emerald-500/15 border-2 border-emerald-500/40 rounded-2xl p-5 sm:p-6 shadow-md space-y-4 animate-fadeIn">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-md">
+                <CheckCircle2 className="w-6 h-6" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h2 className="text-base sm:text-lg font-extrabold tracking-tight text-emerald-800 dark:text-emerald-200">
+                    🎉 ĐÃ HOÀN THÀNH TIẾT KIỆM HÔM NAY ({formatDateVN(todayStr)})
+                  </h2>
+                  <span
+                    className={`px-2.5 py-0.5 rounded-full text-xs font-bold flex items-center gap-1 ${
+                      overview.today_saved_amount >= overview.base_daily_target
+                        ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30'
+                        : 'bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30'
+                    }`}
+                  >
+                    {overview.today_saved_amount > overview.base_daily_target ? (
+                      <>🔥 Vượt chỉ tiêu +{formatVND(overview.today_saved_amount - overview.base_daily_target)}</>
+                    ) : overview.today_saved_amount === overview.base_daily_target ? (
+                      <>✓ Đạt 100% chỉ tiêu</>
+                    ) : (
+                      <>Đã bỏ một phần ({formatVND(overview.today_saved_amount)})</>
+                    )}
                   </span>
-                )}
+                </div>
+                <p className="text-xs text-[var(--muted)] mt-0.5">
+                  Tuyệt vời! Bạn đang duy trì tiến độ hoàn hảo để trả hết toàn bộ nợ trước hạn.
+                </p>
+              </div>
+            </div>
+
+            {/* Nút hủy lượt */}
+            <button
+              onClick={onCancelDailySaving}
+              className="text-xs text-[var(--muted)] hover:text-[var(--danger)] underline self-start sm:self-auto transition-colors"
+            >
+              Hủy lượt bỏ hôm nay
+            </button>
+          </div>
+
+          {/* Chi tiết số tiền & Nút Nạp thêm nổi bật */}
+          <div className="bg-[var(--surface)]/90 backdrop-blur-sm border border-emerald-500/30 rounded-xl p-4 sm:p-5 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
+            <div className="space-y-1">
+              <span className="text-xs uppercase font-bold tracking-wider text-[var(--muted)]">
+                Hôm nay đã để dành:
+              </span>
+              <div className="text-3xl font-extrabold tabular-nums text-emerald-600 dark:text-emerald-400">
+                {formatVND(overview.today_saved_amount)}
               </div>
               <p className="text-xs text-[var(--muted)]">
-                Từ ngày mai ({tomorrowStr}), mỗi ngày bạn cần để dành:{' '}
+                Từ ngày mai ({tomorrowStr}), mỗi ngày cần để dành:{' '}
                 <strong className="text-[var(--foreground)] text-sm font-bold tabular-nums">
                   {formatVND(overview.tomorrow_daily_saving_needed)}
                 </strong>
                 {overview.today_saved_amount > overview.base_daily_target && (
-                  <span className="text-[var(--success)] font-medium ml-1">
+                  <span className="text-emerald-600 dark:text-emerald-400 font-semibold ml-1">
                     (đã giảm nhẹ nhờ hôm nay để dành nhiều hơn 🎉)
-                  </span>
-                )}
-                {overview.today_saved_amount < overview.base_daily_target && (
-                  <span className="text-[var(--warning)] font-medium ml-1">
-                    (tăng nhẹ để bù phần còn thiếu hôm nay)
                   </span>
                 )}
               </p>
             </div>
 
-            <div className="flex items-center gap-2 w-full md:w-auto">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 w-full md:w-auto">
+              {/* NÚT TO NỔI BẬT: NẠP THÊM TIỀN HÔM NAY */}
               <button
                 onClick={() => {
+                  setModalMode('add');
+                  setCustomAmountInput('');
+                  setShowCustomModal(true);
+                }}
+                className="w-full sm:w-auto px-5 py-3 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white text-sm font-bold shadow-md hover:shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2"
+              >
+                <PlusCircle className="w-5 h-5 stroke-[2.5]" />
+                <span>➕ Nạp thêm tiền hôm nay</span>
+              </button>
+
+              {/* Nút chỉnh sửa số tiền */}
+              <button
+                onClick={() => {
+                  setModalMode('set');
                   setCustomAmountInput(overview.today_saved_amount.toLocaleString('vi-VN'));
                   setShowCustomModal(true);
                 }}
-                className="w-full sm:w-auto px-4 py-2.5 rounded-xl text-xs sm:text-sm font-semibold border border-[var(--border)] bg-[var(--surface)] hover:bg-[var(--surface-raised)] active:scale-95 transition-all shadow-sm text-center"
+                className="w-full sm:w-auto px-4 py-3 rounded-xl border border-[var(--border)] bg-[var(--surface-raised)] hover:bg-[var(--surface)] text-xs sm:text-sm font-semibold transition-all shadow-sm text-center active:scale-95"
               >
                 Chỉnh sửa số tiền
               </button>
             </div>
           </div>
-        )}
-      </section>
+        </section>
+      )}
 
       {/* 4 Chỉ số KPI hàng đầu */}
       <section className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
@@ -595,14 +647,18 @@ export default function OverviewTab({
         />
       </section>
 
-      {/* MODAL TÙY CHỈNH SỐ TIỀN ĐỂ DÀNH HÔM NAY */}
+      {/* MODAL TÙY CHỈNH HOẶC NẠP THÊM TIỀN TIẾT KIỆM HÔM NAY */}
       {showCustomModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fadeIn">
           <div className="bg-[var(--surface)] border border-[var(--border)] w-full max-w-sm rounded-2xl shadow-xl overflow-hidden">
             <div className="flex items-center justify-between p-4 border-b border-[var(--border)]">
               <h3 className="font-bold text-base flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-[var(--accent)]" />
-                <span>Số tiền để dành hôm nay ({formatDateVN(todayStr)})</span>
+                <span>
+                  {modalMode === 'add'
+                    ? `Nạp thêm tiền hôm nay (${formatDateVN(todayStr)})`
+                    : `Số tiền để dành hôm nay (${formatDateVN(todayStr)})`}
+                </span>
               </h3>
               <button
                 onClick={() => setShowCustomModal(false)}
@@ -613,14 +669,28 @@ export default function OverviewTab({
             </div>
 
             <form onSubmit={handleCustomSubmit} className="p-4 sm:p-5 space-y-4">
+              {/* Nếu nạp thêm: Hiển thị số tiền đã có sẵn */}
+              {modalMode === 'add' && (
+                <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs flex items-center justify-between">
+                  <span className="text-[var(--muted)] font-medium">Hôm nay đã để dành:</span>
+                  <strong className="text-emerald-600 dark:text-emerald-400 text-sm font-bold tabular-nums">
+                    {formatVND(overview.today_saved_amount)}
+                  </strong>
+                </div>
+              )}
+
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between text-xs">
                   <label className="font-semibold text-[var(--muted)] uppercase tracking-wider">
-                    Nhập số tiền bạn có hôm nay:
+                    {modalMode === 'add'
+                      ? 'Nhập số tiền muốn nạp thêm (+):'
+                      : 'Nhập số tiền bạn có hôm nay:'}
                   </label>
-                  <span className="text-[var(--muted)]">
-                    Chỉ tiêu: <strong className="text-[var(--foreground)]">{formatVND(targetToday)}</strong>
-                  </span>
+                  {modalMode === 'set' && (
+                    <span className="text-[var(--muted)]">
+                      Chỉ tiêu: <strong className="text-[var(--foreground)]">{formatVND(targetToday)}</strong>
+                    </span>
+                  )}
                 </div>
                 <div className="relative">
                   <input
@@ -631,7 +701,7 @@ export default function OverviewTab({
                     value={customAmountInput}
                     onChange={handleCustomInputChange}
                     onFocus={(e) => e.target.select()}
-                    placeholder="VD: 50.000, 100.000, 170.000..."
+                    placeholder={modalMode === 'add' ? 'VD: 50.000, 100.000, 200.000...' : 'VD: 50.000, 100.000, 170.000...'}
                     className="w-full px-4 py-2.5 rounded-xl bg-[var(--surface-raised)] border border-[var(--border)] text-base font-bold tabular-nums focus:outline-none focus:ring-2 focus:ring-[var(--accent)] pr-10"
                   />
                   <span className="absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-semibold text-[var(--muted)] pointer-events-none">
@@ -639,8 +709,23 @@ export default function OverviewTab({
                   </span>
                 </div>
 
-                {/* Phản hồi thời gian thực khi đang nhập số tiền */}
-                {isCustomLessThanTarget && (
+                {/* Phản hồi thời gian thực khi đang nhập số tiền nạp thêm */}
+                {modalMode === 'add' && customAmountNumber > 0 && (
+                  <div className="p-2.5 rounded-lg bg-[var(--success-bg)] border border-[var(--success)]/30 text-xs text-[var(--success)] space-y-0.5">
+                    <div className="font-bold flex items-center gap-1">
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>
+                        Tổng hôm nay sẽ thành: {formatVND((overview.today_saved_amount || 0) + customAmountNumber)}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-[var(--foreground)] opacity-90">
+                      Tuyệt vời! Số tiền vượt này sẽ giúp giảm số tiền cần gom mỗi ngày từ ngày mai!
+                    </p>
+                  </div>
+                )}
+
+                {/* Phản hồi thời gian thực khi đang nhập số tiền chế độ set */}
+                {modalMode === 'set' && isCustomLessThanTarget && (
                   <div className="p-2.5 rounded-lg bg-[var(--warning-bg)] border border-[var(--warning)]/30 text-xs text-[var(--warning)] space-y-0.5">
                     <div className="font-bold flex items-center gap-1">
                       <AlertTriangle className="w-3.5 h-3.5" />
@@ -652,7 +737,7 @@ export default function OverviewTab({
                   </div>
                 )}
 
-                {isCustomMoreThanTarget && (
+                {modalMode === 'set' && isCustomMoreThanTarget && (
                   <div className="p-2.5 rounded-lg bg-[var(--success-bg)] border border-[var(--success)]/30 text-xs text-[var(--success)] space-y-0.5">
                     <div className="font-bold flex items-center gap-1">
                       <Sparkles className="w-3.5 h-3.5" />
@@ -665,24 +750,23 @@ export default function OverviewTab({
                 )}
               </div>
 
-              {/* Phím bấm chọn nhanh: CẢ ÍT HƠN VÀ NHIỀU HƠN */}
+              {/* Phím bấm chọn nhanh */}
               <div className="space-y-1.5">
                 <span className="text-[11px] text-[var(--muted)] font-medium block">
-                  Hoặc bấm chọn nhanh:
+                  {modalMode === 'add' ? 'Bấm chọn nhanh số tiền nạp thêm:' : 'Hoặc bấm chọn nhanh:'}
                 </span>
                 <div className="grid grid-cols-4 gap-1.5">
-                  {[50000, 100000, 170000, 200000, 300000, 500000, 1000000, 2000000].map((amt) => (
+                  {(modalMode === 'add'
+                    ? [50000, 100000, 200000, 300000, 500000, 1000000, 1500000, 2000000]
+                    : [50000, 100000, 170000, 200000, 300000, 500000, 1000000, 2000000]
+                  ).map((amt) => (
                     <button
                       key={amt}
                       type="button"
                       onClick={() => setCustomAmountInput(amt.toLocaleString('vi-VN'))}
-                      className={`py-1.5 px-2 rounded-lg text-xs font-semibold transition-colors border ${
-                        amt === 170000
-                          ? 'bg-[var(--accent-light)] border-[var(--accent)] text-[var(--accent)]'
-                          : 'bg-[var(--surface-raised)] border-[var(--border)] hover:bg-[var(--surface)]'
-                      }`}
+                      className="py-1.5 px-2 rounded-lg text-xs font-semibold transition-colors border bg-[var(--surface-raised)] border-[var(--border)] hover:bg-[var(--surface)] active:scale-95"
                     >
-                      {amt >= 1000000 ? `${amt / 1000000}tr` : `${amt / 1000}k`}
+                      {modalMode === 'add' ? '+' : ''}{amt >= 1000000 ? `${amt / 1000000}tr` : `${amt / 1000}k`}
                     </button>
                   ))}
                 </div>
@@ -701,7 +785,11 @@ export default function OverviewTab({
                   disabled={isSubmittingDaily || !customAmountInput}
                   className="px-5 py-2 rounded-xl text-sm font-semibold bg-[var(--accent)] text-white hover:opacity-90 active:scale-95 transition-all disabled:opacity-50"
                 >
-                  {isSubmittingDaily ? 'Đang lưu...' : 'Xác nhận nạp'}
+                  {isSubmittingDaily
+                    ? 'Đang lưu...'
+                    : modalMode === 'add'
+                    ? `Xác nhận nạp thêm`
+                    : 'Xác nhận nạp'}
                 </button>
               </div>
             </form>

@@ -144,12 +144,18 @@ describe('Telegram Notification & Commands', () => {
       expect(replyMarkup.inline_keyboard[0][0].callback_data).toContain('save:');
     });
 
-    it('Tạo tin nhắn xác nhận tiết kiệm thành công', () => {
+    it('Tạo tin nhắn xác nhận tiết kiệm thành công và nạp thêm', () => {
       const { text, replyMarkup } = buildSavingSuccessMessage(161000, overview, 661000);
       expect(text).toContain('ĐÃ GHI NHẬN BỎ HEO HÔM NAY!');
       expect(text).toContain('161.000 đ');
       expect(text).toContain('Số dư quỹ trả nợ hiện có: 661.000 đ');
       expect(replyMarkup.inline_keyboard.length).toBeGreaterThan(0);
+
+      // Thử nạp thêm
+      const addRes = buildSavingSuccessMessage(211000, overview, 711000, true, 50000);
+      expect(addRes.text).toContain('ĐÃ NẠP THÊM');
+      expect(addRes.text).toContain('50.000 đ');
+      expect(addRes.text).toContain('211.000 đ');
     });
 
     it('Tạo tin nhắn chi tiết Nợ hiện tại', () => {

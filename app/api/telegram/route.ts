@@ -5,6 +5,7 @@ import {
   recordPayment,
   recordDailySaving,
   cancelDailySaving,
+  getSavingForDate,
 } from '@/lib/db';
 import { generateSchedule, getTodayVNString, formatVND } from '@/lib/schedule';
 import {
@@ -64,7 +65,7 @@ export async function POST(req: Request) {
         return NextResponse.json({ ok: true });
       }
 
-      // Callback: Lưu tiền tiết kiệm (save:<amount> hoặc save:cancel)
+      // Callback: Lưu tiền tiết kiệm (save:<amount>, save:add_<amount> hoặc save:cancel)
       if (data.startsWith('save:')) {
         const action = data.replace('save:', '');
 
@@ -74,7 +75,8 @@ export async function POST(req: Request) {
 
           const loans = await getLoans();
           const settings = await getSettings();
-          const overview = generateSchedule(loans, settings.fund_balance, todayStr);
+          const todaySaving = await getSavingForDate(todayStr);
+          const overview = generateSchedule(loans, settings.fund_balance, todayStr, todaySaving);
 
           await sendTelegramMessage(
             token,
@@ -89,6 +91,32 @@ export async function POST(req: Request) {
           return NextResponse.json({ ok: true });
         }
 
+        // Nạp thêm tiền (save:add_50000...)
+        if (action.startsWith('add_')) {
+          const addAmount = parseInt(action.replace('add_', ''), 10);
+          if (!isNaN(addAmount) && addAmount > 0) {
+            const existing = await getSavingForDate(todayStr);
+            const total = (existing?.amount || 0) + addAmount;
+            await recordDailySaving(todayStr, total);
+            await answerCallbackQuery(token, cq.id, `Đã nạp thêm +${formatVND(addAmount)}!`);
+
+            const loans = await getLoans();
+            const settings = await getSettings();
+            const todaySaving = await getSavingForDate(todayStr);
+            const overview = generateSchedule(loans, settings.fund_balance, todayStr, todaySaving);
+            const { text: successText, replyMarkup } = buildSavingSuccessMessage(
+              total,
+              overview,
+              settings.fund_balance,
+              true,
+              addAmount
+            );
+
+            await sendTelegramMessage(token, chatId, successText, replyMarkup);
+            return NextResponse.json({ ok: true });
+          }
+        }
+
         const amount = parseInt(action, 10);
         if (!isNaN(amount) && amount > 0) {
           const res = await recordDailySaving(todayStr, amount);
@@ -96,7 +124,8 @@ export async function POST(req: Request) {
 
           const loans = await getLoans();
           const settings = await getSettings();
-          const overview = generateSchedule(loans, settings.fund_balance, todayStr);
+          const todaySaving = await getSavingForDate(todayStr);
+          const overview = generateSchedule(loans, settings.fund_balance, todayStr, todaySaving);
           const { text: successText, replyMarkup } = buildSavingSuccessMessage(
             amount,
             overview,
@@ -172,7 +201,8 @@ export async function POST(req: Request) {
       ) {
         const loans = await getLoans();
         const settings = await getSettings();
-        const overview = generateSchedule(loans, settings.fund_balance, todayStr);
+        const todaySaving = await getSavingForDate(todayStr);
+        const overview = generateSchedule(loans, settings.fund_balance, todayStr, todaySaving);
         const { text: promptText, replyMarkup } = buildSavingPromptMessage(overview, todayStr);
 
         await sendTelegramMessage(token, chatId, promptText, replyMarkup);
@@ -188,7 +218,8 @@ export async function POST(req: Request) {
       ) {
         const loans = await getLoans();
         const settings = await getSettings();
-        const overview = generateSchedule(loans, settings.fund_balance, todayStr);
+        const todaySaving = await getSavingForDate(todayStr);
+        const overview = generateSchedule(loans, settings.fund_balance, todayStr, todaySaving);
         const debtText = buildDebtReportMessage(overview, loans);
 
         await sendTelegramMessage(token, chatId, debtText, mainKeyboard);
@@ -206,7 +237,8 @@ export async function POST(req: Request) {
       ) {
         const loans = await getLoans();
         const settings = await getSettings();
-        const overview = generateSchedule(loans, settings.fund_balance, todayStr);
+        const todaySaving = await getSavingForDate(todayStr);
+        const overview = generateSchedule(loans, settings.fund_balance, todayStr, todaySaving);
         const fundText = buildFundReportMessage(overview, settings.fund_balance);
 
         await sendTelegramMessage(token, chatId, fundText, mainKeyboard);
@@ -221,7 +253,8 @@ export async function POST(req: Request) {
       ) {
         const loans = await getLoans();
         const settings = await getSettings();
-        const overview = generateSchedule(loans, settings.fund_balance, todayStr);
+        const todaySaving = await getSavingForDate(todayStr);
+        const overview = generateSchedule(loans, settings.fund_balance, todayStr, todaySaving);
         const upcomingText = buildUpcomingPaymentsMessage(overview);
 
         await sendTelegramMessage(token, chatId, upcomingText, mainKeyboard);
@@ -236,7 +269,8 @@ export async function POST(req: Request) {
       ) {
         const loans = await getLoans();
         const settings = await getSettings();
-        const overview = generateSchedule(loans, settings.fund_balance, todayStr);
+        const todaySaving = await getSavingForDate(todayStr);
+        const overview = generateSchedule(loans, settings.fund_balance, todayStr, todaySaving);
         const { text: paidText, replyMarkup } = buildPaidKeyboard(overview);
 
         await sendTelegramMessage(token, chatId, paidText, replyMarkup);
@@ -247,7 +281,8 @@ export async function POST(req: Request) {
       if (lower.startsWith('/status')) {
         const loans = await getLoans();
         const settings = await getSettings();
-        const overview = generateSchedule(loans, settings.fund_balance, todayStr);
+        const todaySaving = await getSavingForDate(todayStr);
+        const overview = generateSchedule(loans, settings.fund_balance, todayStr, todaySaving);
         const statusMsg = buildStatusMessage(overview, todayStr);
 
         await sendTelegramMessage(token, chatId, statusMsg, mainKeyboard);
@@ -257,16 +292,27 @@ export async function POST(req: Request) {
       // Phân tích cú pháp số tiền tự nhiên: 161k, 161828, 200k, 1tr5, 50k, v.v.
       const parsedAmount = parseAmountText(rawText);
       if (parsedAmount !== null && parsedAmount > 0) {
+        const existing = await getSavingForDate(todayStr);
+        let finalAmount = parsedAmount;
+        let isAdd = false;
+        if (existing && existing.amount > 0) {
+          finalAmount = existing.amount + parsedAmount;
+          isAdd = true;
+        }
+
         // Ghi nhận trực tiếp vào Database & cập nhật Quỹ
-        await recordDailySaving(todayStr, parsedAmount);
+        await recordDailySaving(todayStr, finalAmount);
 
         const loans = await getLoans();
         const settings = await getSettings();
-        const overview = generateSchedule(loans, settings.fund_balance, todayStr);
+        const todaySaving = await getSavingForDate(todayStr);
+        const overview = generateSchedule(loans, settings.fund_balance, todayStr, todaySaving);
         const { text: successText, replyMarkup } = buildSavingSuccessMessage(
-          parsedAmount,
+          finalAmount,
           overview,
-          settings.fund_balance
+          settings.fund_balance,
+          isAdd,
+          isAdd ? parsedAmount : undefined
         );
 
         await sendTelegramMessage(token, chatId, successText, replyMarkup);
