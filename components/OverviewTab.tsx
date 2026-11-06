@@ -121,11 +121,9 @@ export default function OverviewTab({
 
   // Xác nhận số tiền hiện có trong quỹ đã bao gồm khoản tiết kiệm hôm nay (không cộng dồn thêm quỹ)
   const handleConfirmFundAsTodaySaving = async () => {
-    const target = overview.base_daily_target > 0 ? overview.base_daily_target : 162000;
-    const amountToConfirm = Math.min(fundBalance, target);
-    if (amountToConfirm <= 0) return;
+    if (fundBalance <= 0) return;
     setIsSubmittingDaily(true);
-    await onSaveDailySaving(amountToConfirm, { preserveFund: true });
+    await onSaveDailySaving(fundBalance, { preserveFund: true });
     setIsSubmittingDaily(false);
   };
 
@@ -233,7 +231,7 @@ export default function OverviewTab({
                 className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition-all shrink-0 active:scale-95 shadow-sm flex items-center justify-center gap-1.5"
               >
                 <Check className="w-4 h-4 stroke-[3]" />
-                <span>Xác nhận đã bỏ {formatVND(Math.min(fundBalance, targetToday))} hôm nay</span>
+                <span>Xác nhận đã bỏ {formatVND(fundBalance)} hôm nay</span>
               </button>
             </div>
           )}
