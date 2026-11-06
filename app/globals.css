@@ -1,0 +1,70 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #f6f8f6;
+  --surface: #ffffff;
+  --surface-raised: #f0f3f1;
+  --foreground: #141c17;
+  --muted: #5e6c64;
+  --border: #e0e6e2;
+  --accent: #1e5ba8;
+  --accent-light: #e6f0fa;
+  --success: #198754;
+  --success-bg: #e8f5ed;
+  --warning: #b26b00;
+  --warning-bg: #fdf3e2;
+  --danger: #d32f2f;
+  --danger-bg: #fde8e8;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: #0f1512;
+    --surface: #18221c;
+    --surface-raised: #202d25;
+    --foreground: #eef3ef;
+    --muted: #95a59c;
+    --border: #28372e;
+    --accent: #5b9af0;
+    --accent-light: #162a42;
+    --success: #4ec88b;
+    --success-bg: #143322;
+    --warning: #f0ad4e;
+    --warning-bg: #3d2b10;
+    --danger: #f87171;
+    --danger-bg: #3d1414;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html, body {
+  background-color: var(--background);
+  color: var(--foreground);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  min-height: 100vh;
+  margin: 0;
+  padding: 0;
+  overflow-x: hidden;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Custom scrollbar for tables */
+::-webkit-scrollbar {
+  height: 6px;
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 4px;
+}

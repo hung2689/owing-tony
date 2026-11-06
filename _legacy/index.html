@@ -1,0 +1,364 @@
+<title>Sổ Trả Nợ</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: một cột tập trung. Hàng tóm tắt, ô nhập quỹ, lịch trả theo tháng, bảng khoản vay. */
+:root {
+  --bg: #f4f5f3;
+  --surface: #ffffff;
+  --fg: #1b2420;
+  --muted: #5d6a63;
+  --line: #dde2dd;
+  --accent: #1d4d8f;
+  --accent-soft: #e4ecf7;
+  --good: #1f7a4d;
+  --good-soft: #e1f2e8;
+  --warn: #9a5b00;
+  --warn-soft: #fbefd5;
+  --bad: #b3261e;
+  --bad-soft: #fbe4e1;
+  --font-display: "Bricolage Grotesque", "IBM Plex Sans", system-ui, sans-serif;
+  --font-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #121714; --surface: #1a211d; --fg: #e8ede9; --muted: #9aa8a0; --line: #2b352f;
+    --accent: #7fb0ec; --accent-soft: #1b2b40;
+    --good: #5fcb92; --good-soft: #17301f; --warn: #e8b04e; --warn-soft: #382a10;
+    --bad: #f08a82; --bad-soft: #3b1a17; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #121714; --surface: #1a211d; --fg: #e8ede9; --muted: #9aa8a0; --line: #2b352f;
+  --accent: #7fb0ec; --accent-soft: #1b2b40;
+  --good: #5fcb92; --good-soft: #17301f; --warn: #e8b04e; --warn-soft: #382a10;
+  --bad: #f08a82; --bad-soft: #3b1a17; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  background: var(--bg); color: var(--fg); font-family: var(--font-body); font-size: 15px; line-height: 1.5;
+  padding-block: 24px 48px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 880px; margin: 0 auto; display: flex; flex-direction: column; gap: 20px; }
+h1, h2 { font-family: var(--font-display); margin: 0; text-wrap: balance; letter-spacing: -0.01em; }
+h1 { font-size: 28px; line-height: 1.15; }
+h2 { font-size: 18px; }
+.sub { color: var(--muted); margin: 4px 0 0; max-width: 62ch; }
+.num { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+button, input { font: inherit; color: inherit; }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
+.stat { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; min-width: 0; }
+.stat.main { background: var(--accent-soft); border-color: transparent; }
+.stat .k { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.stat .v { font-family: var(--font-mono); font-size: 24px; font-weight: 500; margin-top: 4px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.stat .n { font-size: 13px; color: var(--muted); margin-top: 2px; }
+
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 16px; display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.fund { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
+.fund label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+.fund input { width: 220px; max-width: 100%; padding: 9px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--bg); font-family: var(--font-mono); font-size: 17px; }
+.hint { font-size: 13px; color: var(--muted); margin: 0; max-width: 70ch; }
+.btn { border: 1px solid var(--line); background: var(--surface); padding: 8px 12px; border-radius: 8px; cursor: pointer; font-size: 14px; }
+.btn:hover { border-color: var(--accent); }
+.btn:disabled { opacity: 0.45; cursor: default; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--surface); }
+.row-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 620px; }
+th { text-align: left; font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--muted); padding: 6px 10px; border-bottom: 1px solid var(--line); }
+td { padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: middle; }
+td.r, th.r { text-align: right; }
+tr.month td { background: var(--bg); font-family: var(--font-display); font-weight: 600; border-bottom: 1px solid var(--line); }
+tr.soon td:first-child { box-shadow: inset 3px 0 0 var(--warn); }
+tr.today td:first-child { box-shadow: inset 3px 0 0 var(--bad); }
+.pill { display: inline-block; font-size: 12px; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+.pill.good { background: var(--good-soft); color: var(--good); }
+.pill.warn { background: var(--warn-soft); color: var(--warn); }
+.pill.bad { background: var(--bad-soft); color: var(--bad); }
+.pill.mute { background: var(--bg); color: var(--muted); }
+.chk { width: 22px; height: 22px; accent-color: var(--accent); cursor: pointer; }
+.chk:disabled { cursor: default; opacity: 0.35; }
+.bar { height: 8px; background: var(--bg); border-radius: 99px; overflow: hidden; min-width: 90px; }
+.bar > i { display: block; height: 100%; background: var(--accent); }
+.log { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; font-size: 13px; color: var(--muted); }
+.toast { font-size: 13px; color: var(--good); min-height: 18px; }
+@media (prefers-reduced-motion: no-preference) { .bar > i { transition: width .3s; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Sổ Trả Nợ</h1>
+    <p class="sub">Nhập số tiền đang để riêng, trang sẽ tính mỗi ngày cần bỏ thêm bao nhiêu để đủ tiền trước từng hạn. Tick vào ô khi đã trả, số kỳ và số nợ còn lại tự cập nhật.</p>
+  </header>
+
+  <section class="stats" id="stats"></section>
+
+  <section class="panel">
+    <h2>Tiền đang để riêng</h2>
+    <div class="fund">
+      <label for="balance">Số dư quỹ trả nợ (đồng)
+        <input id="balance" type="text" inputmode="numeric" autocomplete="off" placeholder="0">
+      </label>
+      <div class="row-actions">
+        <button class="btn" id="undo" type="button">Hoàn tác lần tick gần nhất</button>
+      </div>
+    </div>
+    <p class="hint">Khi bạn tick "đã trả", số tiền của khoản đó được trừ khỏi quỹ này. Nhớ cộng thêm vào ô này mỗi lần bạn bỏ tiền vào quỹ.</p>
+    <div class="toast" id="toast" aria-live="polite"></div>
+  </section>
+
+  <section class="panel">
+    <h2>Lịch trả theo ngày</h2>
+    <div class="scroll"><table id="sched"></table></div>
+    <p class="hint">Cột "Cần có" là tổng tiền phải có trong quỹ tính đến hết ngày đó. Chỉ khoản kỳ gần nhất của mỗi khoản vay mới tick được, để số kỳ không bị lệch.</p>
+  </section>
+
+  <section class="panel">
+    <h2>Các khoản vay</h2>
+    <div class="scroll"><table id="loans"></table></div>
+  </section>
+
+  <section class="panel">
+    <h2>Nhắc nhở qua Telegram</h2>
+    <p class="hint">Trang web không tự gửi tin được. Bấm nút dưới để copy lịch hiện tại, rồi dán vào file <span class="num">lich.json</span> của script nhắc nhở.</p>
+    <div class="row-actions">
+      <button class="btn primary" id="copycfg" type="button">Copy lịch nhắc nhở</button>
+      <button class="btn" id="reset" type="button">Đặt lại dữ liệu mẫu</button>
+    </div>
+    <textarea id="cfgbox" readonly hidden rows="6" style="width:100%;font-family:var(--font-mono);font-size:12px;background:var(--bg);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:8px"></textarea>
+    <div class="toast" id="toast2" aria-live="polite"></div>
+  </section>
+
+  <section class="panel" id="logpanel" hidden>
+    <h2>Đã trả gần đây</h2>
+    <ul class="log" id="log"></ul>
+  </section>
+</div>
+
+<script>
+(function () {
+  var KEY = "so-tra-no-v1";
+  var DAY = 86400000;
+
+  // Dữ liệu mẫu theo số bạn đã gửi. "anchor" là ngày trả của kỳ kế tiếp, "base" là số kỳ đã trả lúc nhập.
+  var SEED = [
+    { id: "a", amount: 371000, total: 3,  paid: 2, anchor: "2026-11-18" },
+    { id: "b", amount: 740000, total: 3,  paid: 1, anchor: "2026-11-19" },
+    { id: "c", amount: 370000, total: 3,  paid: 0, anchor: "2026-11-19" },
+    { id: "d", amount: 346000, total: 12, paid: 3, anchor: "2026-11-22" },
+    { id: "e", amount: 725000, total: 9,  paid: 5, anchor: "2026-11-25" },
+    { id: "f", amount: 740000, total: 3,  paid: 1, anchor: "2026-12-01" },
+    { id: "g", amount: 370000, total: 3,  paid: 0, anchor: "2026-12-01" },
+    { id: "h", amount: 1031000, total: 6, paid: 0, anchor: "2026-12-05" },
+    { id: "i", amount: 370000, total: 3,  paid: 1, anchor: "2026-12-09" },
+    { id: "j", amount: 231000, total: 12, paid: 5, anchor: "2026-12-14" }
+  ];
+
+  function fresh() {
+    return {
+      balance: 0,
+      log: [],
+      loans: SEED.map(function (l) {
+        return { id: l.id, amount: l.amount, total: l.total, paid: l.paid, base: l.paid, anchor: l.anchor };
+      })
+    };
+  }
+
+  var state = load();
+
+  function load() {
+    try {
+      var raw = localStorage.getItem(KEY);
+      if (raw) {
+        var s = JSON.parse(raw);
+        if (s && s.loans && s.loans.length) return s;
+      }
+    } catch (e) {}
+    return fresh();
+  }
+  function save() { try { localStorage.setItem(KEY, JSON.stringify(state)); } catch (e) {} }
+
+  function parseISO(s) { var p = s.split("-"); return new Date(+p[0], +p[1] - 1, +p[2]); }
+  function toISO(d) { return d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate()); }
+  function pad(n) { return n < 10 ? "0" + n : "" + n; }
+  function addMonths(d, m) {
+    var day = d.getDate();
+    var r = new Date(d.getFullYear(), d.getMonth() + m, 1);
+    var last = new Date(r.getFullYear(), r.getMonth() + 1, 0).getDate();
+    r.setDate(Math.min(day, last));
+    return r;
+  }
+  function money(n) { return Math.round(n).toLocaleString("vi-VN"); }
+  function fmtDate(d) { return pad(d.getDate()) + "/" + pad(d.getMonth() + 1); }
+  function today0() { var n = new Date(); return new Date(n.getFullYear(), n.getMonth(), n.getDate()); }
+  function label(l) { return "Khoản " + (l.amount / 1000) + "k, ngày " + parseISO(l.anchor).getDate(); }
+
+  function payments() {
+    var out = [];
+    state.loans.forEach(function (l) {
+      var a = parseISO(l.anchor);
+      for (var n = l.paid + 1; n <= l.total; n++) {
+        out.push({ loan: l, n: n, date: addMonths(a, n - (l.base + 1)) });
+      }
+    });
+    out.sort(function (x, y) { return x.date - y.date || x.loan.id.localeCompare(y.loan.id) || x.n - y.n; });
+    var cum = 0;
+    out.forEach(function (p) { cum += p.loan.amount; p.cum = cum; });
+    return out;
+  }
+
+  function render() {
+    var t0 = today0();
+    var pays = payments();
+    var remaining = pays.reduce(function (s, p) { return s + p.loan.amount; }, 0);
+    var totalK = state.loans.reduce(function (s, l) { return s + l.total; }, 0);
+    var paidK = state.loans.reduce(function (s, l) { return s + l.paid; }, 0);
+    var bal = state.balance || 0;
+
+    // Số tiền cần bỏ thêm mỗi ngày: lấy mốc khắt khe nhất trong tất cả các hạn.
+    var daily = 0, critical = null;
+    pays.forEach(function (p) {
+      var days = Math.max(1, Math.round((p.date - t0) / DAY));
+      var need = Math.max(0, p.cum - bal) / days;
+      if (need > daily) { daily = need; critical = p; }
+    });
+
+    var next = pays[0];
+    var nextDays = next ? Math.round((next.date - t0) / DAY) : 0;
+    var monthly = state.loans.reduce(function (s, l) { return l.paid < l.total ? s + l.amount : s; }, 0);
+
+    var h = "";
+    h += stat("main", "Mỗi ngày cần bỏ thêm", daily > 0 ? money(daily) + " đ" : "0 đ",
+      critical && daily > 0 ? "Tính theo hạn " + fmtDate(critical.date) + ", cần có " + money(critical.cum) + " đ" : "Quỹ đã đủ cho mọi hạn");
+    h += stat("", "Còn phải trả", money(remaining) + " đ", pays.length + " kỳ, mỗi tháng tối đa " + money(monthly) + " đ");
+    h += stat("", "Hạn kế tiếp", next ? fmtDate(next.date) : "Hết nợ",
+      next ? (nextDays <= 0 ? "Hôm nay" : "Còn " + nextDays + " ngày") + ", " + money(next.loan.amount) + " đ" : "Đã trả xong tất cả");
+    h += stat("", "Tiến độ", paidK + "/" + totalK + " kỳ", Math.round(paidK / totalK * 100) + "% tổng số kỳ đã trả");
+    document.getElementById("stats").innerHTML = h;
+
+    var inp = document.getElementById("balance");
+    if (document.activeElement !== inp) inp.value = bal ? money(bal) : "";
+    document.getElementById("undo").disabled = !state.log.length;
+
+    // Lịch trả
+    var nextOf = {};
+    pays.forEach(function (p) { if (!nextOf[p.loan.id]) nextOf[p.loan.id] = p; });
+    var s = "<thead><tr><th>Ngày</th><th>Khoản</th><th class=\"r\">Số tiền</th><th>Kỳ</th><th class=\"r\">Cần có</th><th>Quỹ</th><th>Đã trả</th></tr></thead><tbody>";
+    var lastMonth = "";
+    pays.forEach(function (p) {
+      var mk = p.date.getFullYear() + "-" + p.date.getMonth();
+      if (mk !== lastMonth) {
+        lastMonth = mk;
+        var tot = pays.filter(function (q) { return q.date.getFullYear() === p.date.getFullYear() && q.date.getMonth() === p.date.getMonth(); })
+          .reduce(function (a, q) { return a + q.loan.amount; }, 0);
+        s += "<tr class=\"month\"><td colspan=\"7\">Tháng " + (p.date.getMonth() + 1) + "/" + p.date.getFullYear() + " &middot; <span class=\"num\">" + money(tot) + " đ</span></td></tr>";
+      }
+      var days = Math.round((p.date - t0) / DAY);
+      var cls = days <= 0 ? "today" : (days <= 3 ? "soon" : "");
+      var ok = bal >= p.cum;
+      var status = ok ? "<span class=\"pill good\">Đủ</span>" : "<span class=\"pill " + (days <= 3 ? "bad" : "warn") + "\">Thiếu " + money(p.cum - bal) + "</span>";
+      var can = nextOf[p.loan.id] === p;
+      s += "<tr class=\"" + cls + "\"><td class=\"num\">" + fmtDate(p.date) + "<div class=\"hint\">" + (days <= 0 ? "Hôm nay" : "Còn " + days + " ngày") + "</div></td>" +
+        "<td>" + label(p.loan) + "</td>" +
+        "<td class=\"r num\">" + money(p.loan.amount) + "</td>" +
+        "<td class=\"num\">" + p.n + "/" + p.loan.total + "</td>" +
+        "<td class=\"r num\">" + money(p.cum) + "</td>" +
+        "<td>" + status + "</td>" +
+        "<td><input class=\"chk\" type=\"checkbox\" id=\"c-" + p.loan.id + "-" + p.n + "\" data-loan=\"" + p.loan.id + "\" aria-label=\"Đã trả " + label(p.loan) + " kỳ " + p.n + "\"" + (can ? "" : " disabled") + "></td></tr>";
+    });
+    if (!pays.length) s += "<tr><td colspan=\"7\">Không còn kỳ nào cần trả.</td></tr>";
+    s += "</tbody>";
+    document.getElementById("sched").innerHTML = s;
+
+    // Bảng khoản vay
+    var L = "<thead><tr><th>Khoản</th><th>Tiến độ</th><th class=\"r\">Còn nợ</th><th>Trả xong</th></tr></thead><tbody>";
+    state.loans.slice().sort(function (a, b) { return parseISO(a.anchor).getDate() - parseISO(b.anchor).getDate(); }).forEach(function (l) {
+      var left = l.total - l.paid;
+      var done = left <= 0;
+      var endD = done ? null : addMonths(parseISO(l.anchor), l.total - (l.base + 1));
+      L += "<tr><td>" + label(l) + "<div class=\"hint num\">" + money(l.amount) + " đ/kỳ</div></td>" +
+        "<td><div class=\"num\">" + l.paid + "/" + l.total + " kỳ</div><div class=\"bar\"><i style=\"width:" + Math.round(l.paid / l.total * 100) + "%\"></i></div></td>" +
+        "<td class=\"r num\">" + money(Math.max(0, left) * l.amount) + "</td>" +
+        "<td>" + (done ? "<span class=\"pill good\">Đã xong</span>" : "<span class=\"num\">" + pad(endD.getMonth() + 1) + "/" + endD.getFullYear() + "</span>") + "</td></tr>";
+    });
+    L += "</tbody>";
+    document.getElementById("loans").innerHTML = L;
+
+    // Nhật ký
+    var lp = document.getElementById("logpanel");
+    lp.hidden = !state.log.length;
+    document.getElementById("log").innerHTML = state.log.slice(-5).reverse().map(function (e) {
+      return "<li>" + e.when + ": " + e.name + ", kỳ " + e.n + ", <span class=\"num\">" + money(e.amount) + " đ</span></li>";
+    }).join("");
+  }
+
+  function stat(cls, k, v, n) {
+    return "<div class=\"stat " + cls + "\"><div class=\"k\">" + k + "</div><div class=\"v\">" + v + "</div><div class=\"n\">" + n + "</div></div>";
+  }
+
+  function say(id, msg) {
+    var el = document.getElementById(id);
+    el.textContent = msg;
+    setTimeout(function () { if (el.textContent === msg) el.textContent = ""; }, 4000);
+  }
+
+  document.getElementById("balance").addEventListener("input", function (e) {
+    var v = parseInt(e.target.value.replace(/[^\d]/g, ""), 10);
+    state.balance = isNaN(v) ? 0 : v;
+    save();
+    var pos = e.target.selectionStart;
+    render();
+    e.target.value = state.balance ? money(state.balance) : "";
+  });
+
+  document.getElementById("sched").addEventListener("change", function (e) {
+    var t = e.target;
+    if (!t.dataset || !t.dataset.loan || !t.checked) return;
+    var l = state.loans.filter(function (x) { return x.id === t.dataset.loan; })[0];
+    if (!l || l.paid >= l.total) return;
+    l.paid += 1;
+    state.balance = (state.balance || 0) - l.amount;
+    var now = new Date();
+    state.log.push({ id: l.id, n: l.paid, amount: l.amount, name: label(l), when: fmtDate(now) });
+    save(); render();
+    say("toast", "Đã ghi nhận " + label(l) + ", kỳ " + l.paid + "/" + l.total + ". Quỹ giảm " + money(l.amount) + " đ.");
+  });
+
+  document.getElementById("undo").addEventListener("click", function () {
+    var e = state.log.pop();
+    if (!e) return;
+    var l = state.loans.filter(function (x) { return x.id === e.id; })[0];
+    if (l && l.paid > 0) l.paid -= 1;
+    state.balance = (state.balance || 0) + e.amount;
+    save(); render();
+    say("toast", "Đã hoàn tác " + e.name + ", kỳ " + e.n + ".");
+  });
+
+  document.getElementById("reset").addEventListener("click", function () {
+    state = fresh(); save(); render();
+    say("toast2", "Đã đặt lại về dữ liệu mẫu.");
+  });
+
+  document.getElementById("copycfg").addEventListener("click", function () {
+    var cfg = payments().map(function (p) {
+      return { date: toISO(p.date), amount: p.loan.amount, label: label(p.loan) + " (kỳ " + p.n + "/" + p.loan.total + ")" };
+    });
+    var text = JSON.stringify(cfg, null, 2);
+    var box = document.getElementById("cfgbox");
+    box.value = text; box.hidden = false;
+    var done = function () { say("toast2", "Đã copy " + cfg.length + " lần nhắc."); };
+    var fail = function () { box.select(); say("toast2", "Không tự copy được, hãy chọn và copy nội dung trong khung."); };
+    try { navigator.clipboard.writeText(text).then(done, fail); } catch (err) { fail(); }
+  });
+
+  render();
+})();
+</script>
