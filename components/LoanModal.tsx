@@ -129,7 +129,7 @@ export default function LoanModal({
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="VD: Khoản 371k, ngày 18"
-              className="w-full px-3 py-2 rounded-xl bg-[var(--surface-raised)] border border-[var(--border)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+              className="w-full px-3 py-2 rounded-xl bg-[var(--surface-raised)] border border-[var(--border)] text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
             />
           </div>
 
@@ -148,7 +148,7 @@ export default function LoanModal({
               }
               onChange={(e) => setAmount(e.target.value.replace(/[^0-9]/g, ''))}
               placeholder="VD: 371.000"
-              className="w-full px-3 py-2 rounded-xl bg-[var(--surface-raised)] border border-[var(--border)] text-sm font-semibold tabular-nums focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+              className="w-full px-3 py-2 rounded-xl bg-[var(--surface-raised)] border border-[var(--border)] text-base sm:text-sm font-semibold tabular-nums focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
             />
           </div>
 
@@ -159,11 +159,12 @@ export default function LoanModal({
               </label>
               <input
                 type="number"
+                inputMode="numeric"
                 min="0"
                 required
                 value={paidInstallments}
                 onChange={(e) => setPaidInstallments(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl bg-[var(--surface-raised)] border border-[var(--border)] text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+                className="w-full px-3 py-2 rounded-xl bg-[var(--surface-raised)] border border-[var(--border)] text-base sm:text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
               />
             </div>
             <div className="space-y-1">
@@ -172,11 +173,12 @@ export default function LoanModal({
               </label>
               <input
                 type="number"
+                inputMode="numeric"
                 min="1"
                 required
                 value={totalInstallments}
                 onChange={(e) => setTotalInstallments(e.target.value)}
-                className="w-full px-3 py-2 rounded-xl bg-[var(--surface-raised)] border border-[var(--border)] text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+                className="w-full px-3 py-2 rounded-xl bg-[var(--surface-raised)] border border-[var(--border)] text-base sm:text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
               />
             </div>
           </div>
@@ -190,7 +192,7 @@ export default function LoanModal({
               required
               value={anchorDate}
               onChange={(e) => setAnchorDate(e.target.value)}
-              className="w-full px-3 py-2 rounded-xl bg-[var(--surface-raised)] border border-[var(--border)] text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+              className="w-full px-3 py-2 rounded-xl bg-[var(--surface-raised)] border border-[var(--border)] text-base sm:text-sm tabular-nums focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
             />
             <p className="text-[11px] text-[var(--muted)]">
               Các kỳ tiếp theo sẽ tự động rơi vào cùng ngày này ở các tháng sau.

@@ -7,7 +7,7 @@ import {
   formatVND,
   formatDateVN,
 } from '@/lib/schedule';
-import { RotateCcw, AlertTriangle, CalendarCheck2 } from 'lucide-react';
+import { RotateCcw, AlertTriangle, CalendarCheck2, CheckCircle, Check } from 'lucide-react';
 
 interface ScheduleTabProps {
   overview: ScheduleOverview;
@@ -105,8 +105,107 @@ export default function ScheduleTab({
                 </span>
               </div>
 
-              {/* Table view with horizontal scroll on small devices */}
-              <div className="overflow-x-auto w-full">
+              {/* Mobile Card View (< md) */}
+              <div className="divide-y divide-[var(--border)] md:hidden">
+                {group.payments.map((p) => {
+                  const isToday = p.days_remaining <= 0;
+                  const isSoon = p.days_remaining > 0 && p.days_remaining <= 3;
+                  const isSufficient = fundBalance >= p.cumulative_amount;
+                  const deficit = p.cumulative_amount - fundBalance;
+
+                  return (
+                    <div
+                      key={`${p.loan_id}-${p.installment_number}`}
+                      className={`p-4 space-y-3 transition-colors ${
+                        isToday
+                          ? 'bg-[var(--danger-bg)]/80'
+                          : isSoon
+                          ? 'bg-[var(--warning-bg)]/60'
+                          : ''
+                      }`}
+                    >
+                      {/* Row 1: Ngày hạn & Countdown & Số kỳ */}
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="font-extrabold text-sm tabular-nums text-[var(--foreground)]">
+                            {formatDateVN(p.due_date)}
+                          </span>
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              isToday
+                                ? 'bg-[var(--danger)] text-white'
+                                : isSoon
+                                ? 'bg-[var(--warning)] text-white'
+                                : 'bg-[var(--surface-raised)] text-[var(--muted)] border border-[var(--border)]'
+                            }`}
+                          >
+                            {isToday
+                              ? 'Hôm nay'
+                              : p.days_remaining === 1
+                              ? 'Ngày mai'
+                              : `Còn ${p.days_remaining} ngày`}
+                          </span>
+                        </div>
+
+                        <span className="px-2 py-0.5 rounded-md bg-[var(--surface-raised)] font-medium text-xs border border-[var(--border)] tabular-nums">
+                          Kỳ {p.installment_number}/{p.total_installments}
+                        </span>
+                      </div>
+
+                      {/* Row 2: Tên khoản nợ & Số tiền */}
+                      <div className="flex items-baseline justify-between gap-2">
+                        <span className="font-bold text-sm text-[var(--foreground)] truncate">
+                          {p.loan_name}
+                        </span>
+                        <span className="font-extrabold text-base text-[var(--foreground)] tabular-nums shrink-0">
+                          {formatVND(p.amount)}
+                        </span>
+                      </div>
+
+                      {/* Row 3: Tích lũy cần có & Trạng thái quỹ */}
+                      <div className="flex items-center justify-between text-xs pt-1 border-t border-[var(--border)]/60">
+                        <span className="text-[var(--muted)]">
+                          Cần tích lũy:{' '}
+                          <strong className="text-[var(--foreground)] font-semibold tabular-nums">
+                            {formatVND(p.cumulative_amount)}
+                          </strong>
+                        </span>
+
+                        {isSufficient ? (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold bg-[var(--success-bg)] text-[var(--success)]">
+                            Đủ quỹ
+                          </span>
+                        ) : (
+                          <span
+                            className={`inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-bold ${
+                              isSoon || isToday
+                                ? 'bg-[var(--danger-bg)] text-[var(--danger)] border border-[var(--danger)]/30'
+                                : 'bg-[var(--warning-bg)] text-[var(--warning)] border border-[var(--warning)]/30'
+                            }`}
+                          >
+                            Thiếu {formatVND(deficit)}
+                          </span>
+                        )}
+                      </div>
+
+                      {/* Action: Nút tick trả nợ nhanh trên điện thoại */}
+                      {p.is_nearest && (
+                        <button
+                          type="button"
+                          onClick={() => onTickPayment(p.loan_id)}
+                          className="w-full mt-2 py-2.5 px-3 rounded-xl bg-[var(--accent)] text-white hover:opacity-95 active:scale-[0.98] transition-all flex items-center justify-center gap-2 text-xs font-bold shadow-sm"
+                        >
+                          <CheckCircle className="w-4 h-4" />
+                          <span>Đánh dấu đã thanh toán kỳ này</span>
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Desktop Table View (>= md) */}
+              <div className="hidden md:block overflow-x-auto w-full">
                 <table className="w-full text-left border-collapse text-xs sm:text-sm min-w-[580px]">
                   <thead>
                     <tr className="border-b border-[var(--border)] text-[var(--muted)] text-[11px] uppercase tracking-wider bg-[var(--surface)]/50">

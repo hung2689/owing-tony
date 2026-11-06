@@ -1,6 +1,17 @@
 import { describe, it, expect } from 'vitest';
 import { Loan, generateSchedule } from '../schedule';
-import { buildDailyReportMessage, buildStatusMessage, buildPaidKeyboard } from '../telegram';
+import {
+  buildDailyReportMessage,
+  buildStatusMessage,
+  buildPaidKeyboard,
+  parseAmountText,
+  buildMainReplyKeyboard,
+  buildSavingPromptMessage,
+  buildSavingSuccessMessage,
+  buildDebtReportMessage,
+  buildFundReportMessage,
+  buildUpcomingPaymentsMessage,
+} from '../telegram';
 
 const SEED_LOANS: Loan[] = [
   { id: '1', name: 'Khoản 371k, ngày 18', amount: 371000, total_installments: 3, paid_installments: 2, base_paid: 2, anchor_date: '2026-11-18' },
@@ -55,5 +66,109 @@ describe('Telegram Notification & Commands', () => {
     const { replyMarkup } = buildPaidKeyboard(overview);
     expect(replyMarkup.inline_keyboard.length).toBeGreaterThan(0);
     expect(replyMarkup.inline_keyboard[0][0].callback_data).toContain('pay:');
+  });
+
+  describe('parseAmountText - Parser số tiền thông minh', () => {
+    it('Nhận diện đúng dạng k / nghìn', () => {
+      expect(parseAmountText('161k')).toBe(161000);
+      expect(parseAmountText('161K')).toBe(161000);
+      expect(parseAmountText('161.8k')).toBe(161800);
+      expect(parseAmountText('50k')).toBe(50000);
+      expect(parseAmountText('50 nghìn')).toBe(50000);
+      expect(parseAmountText('500k')).toBe(500000);
+    });
+
+    it('Nhận diện đúng dạng triệu / tr / slang', () => {
+      expect(parseAmountText('1tr')).toBe(1000000);
+      expect(parseAmountText('1.5tr')).toBe(1500000);
+      expect(parseAmountText('1,5tr')).toBe(1500000);
+      expect(parseAmountText('1tr5')).toBe(1500000);
+      expect(parseAmountText('2 triệu')).toBe(2000000);
+      expect(parseAmountText('2tr3')).toBe(2300000);
+    });
+
+    it('Nhận diện đúng dạng số có dấu phân cách nghìn hoặc số thuần', () => {
+      expect(parseAmountText('161.828')).toBe(161828);
+      expect(parseAmountText('161,828')).toBe(161828);
+      expect(parseAmountText('170000')).toBe(170000);
+      expect(parseAmountText('161828')).toBe(161828);
+      expect(parseAmountText('1.031.000')).toBe(1031000);
+    });
+
+    it('Nhận diện số nhỏ < 1000 mặc định là nghìn', () => {
+      expect(parseAmountText('161')).toBe(161000);
+      expect(parseAmountText('200')).toBe(200000);
+      expect(parseAmountText('50')).toBe(50000);
+    });
+
+    it('Xử lý được tiền tố và hậu tố thông dụng', () => {
+      expect(parseAmountText('tiết kiệm 161k')).toBe(161000);
+      expect(parseAmountText('tiet kiem 200k')).toBe(200000);
+      expect(parseAmountText('bỏ 161k')).toBe(161000);
+      expect(parseAmountText('bo heo 500k')).toBe(500000);
+      expect(parseAmountText('nạp 1tr')).toBe(1000000);
+      expect(parseAmountText('161k vnđ')).toBe(161000);
+      expect(parseAmountText('+200k')).toBe(200000);
+    });
+
+    it('Bỏ qua lệnh và văn bản không phải tiền', () => {
+      expect(parseAmountText('/status')).toBeNull();
+      expect(parseAmountText('/paid')).toBeNull();
+      expect(parseAmountText('xem nợ hiện tại')).toBeNull();
+      expect(parseAmountText('xem quỹ hiện có')).toBeNull();
+      expect(parseAmountText('xin chào')).toBeNull();
+      expect(parseAmountText('')).toBeNull();
+    });
+  });
+
+  describe('Interactive Message & Keyboard Builders', () => {
+    const TODAY = '2026-11-06';
+    const overview = generateSchedule(SEED_LOANS, 500000, TODAY);
+
+    it('Tạo bàn phím chính thường trực với 5 nút', () => {
+      const kb = buildMainReplyKeyboard();
+      expect(kb.keyboard.length).toBe(3);
+      expect(kb.keyboard[0][0].text).toContain('Tiết kiệm');
+      expect(kb.keyboard[0][1].text).toContain('Xem quỹ');
+      expect(kb.keyboard[1][0].text).toContain('Xem nợ');
+      expect(kb.keyboard[1][1].text).toContain('sắp đến hạn');
+      expect(kb.keyboard[2][0].text).toContain('Tick đã trả');
+      expect(kb.resize_keyboard).toBe(true);
+    });
+
+    it('Tạo tin nhắn prompt tiết kiệm hôm nay kèm inline keyboard', () => {
+      const { text, replyMarkup } = buildSavingPromptMessage(overview, TODAY);
+      expect(text).toContain('TIẾT KIỆM HÔM NAY');
+      expect(text).toContain('Chỉ tiêu hôm nay:');
+      expect(replyMarkup.inline_keyboard.length).toBeGreaterThanOrEqual(2);
+      expect(replyMarkup.inline_keyboard[0][0].callback_data).toContain('save:');
+    });
+
+    it('Tạo tin nhắn xác nhận tiết kiệm thành công', () => {
+      const { text, replyMarkup } = buildSavingSuccessMessage(161000, overview, 661000);
+      expect(text).toContain('ĐÃ GHI NHẬN BỎ HEO HÔM NAY!');
+      expect(text).toContain('161.000 đ');
+      expect(text).toContain('Số dư quỹ trả nợ hiện có: 661.000 đ');
+      expect(replyMarkup.inline_keyboard.length).toBeGreaterThan(0);
+    });
+
+    it('Tạo tin nhắn chi tiết Nợ hiện tại', () => {
+      const text = buildDebtReportMessage(overview, SEED_LOANS);
+      expect(text).toContain('TỔNG QUAN NỢ HIỆN TẠI');
+      expect(text).toContain('Tổng nợ còn lại:');
+      expect(text).toContain('Danh sách từng khoản vay:');
+      expect(text).toContain('Khoản 371k');
+    });
+
+    it('Tạo tin nhắn chi tiết Quỹ hiện có', () => {
+      const text = buildFundReportMessage(overview, 500000);
+      expect(text).toContain('SỐ DƯ QUỸ TRẢ NỢ HIỆN CÓ');
+      expect(text).toContain('500.000 đ');
+    });
+
+    it('Tạo tin nhắn các kỳ sắp đến hạn', () => {
+      const text = buildUpcomingPaymentsMessage(overview);
+      expect(text).toContain('CÁC KỲ ĐẾN HẠN TRONG 14 NGÀY TỚI');
+    });
   });
 });

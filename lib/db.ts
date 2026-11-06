@@ -1,5 +1,7 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
-import { Loan } from './schedule';
+import { Loan, DailySavingRecord } from './schedule';
+import fs from 'fs';
+import path from 'path';
 
 // 10 khoản mẫu khởi tạo
 export const DEFAULT_LOANS: Loan[] = [
@@ -38,12 +40,15 @@ export interface PaymentLog {
 let supabaseInstance: SupabaseClient | null = null;
 
 export function getSupabase(): SupabaseClient | null {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  let url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!url || !key || url.includes('your-project-id')) {
     return null;
   }
+
+  // Tự động làm sạch URL nếu người dùng lỡ copy cả đuôi /rest/v1 hoặc dấu gạch chéo
+  url = url.trim().replace(/\/rest\/v1\/?$/, '').replace(/\/+$/, '');
 
   if (!supabaseInstance) {
     supabaseInstance = createClient(url, key, {
@@ -442,3 +447,178 @@ export async function undoLastPayment(): Promise<{ success: boolean; message: st
     message: `Đã hoàn tác kỳ ${lastLog.installment_number} của ${loan?.name || 'khoản vay'}`,
   };
 }
+
+// Lưu trữ cục bộ cho các ngày để dành (dự phòng khi Supabase chưa tạo bảng savings_log)
+const SAVINGS_FILE = path.join(process.cwd(), '.data', 'savings.json');
+
+function readLocalSavings(): DailySavingRecord[] {
+  try {
+    if (!fs.existsSync(SAVINGS_FILE)) return [];
+    const raw = fs.readFileSync(SAVINGS_FILE, 'utf-8');
+    return JSON.parse(raw) || [];
+  } catch {
+    return [];
+  }
+}
+
+function writeLocalSavings(data: DailySavingRecord[]) {
+  try {
+    const dir = path.dirname(SAVINGS_FILE);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(SAVINGS_FILE, JSON.stringify(data, null, 2), 'utf-8');
+  } catch (e) {
+    console.warn('Lỗi ghi local savings:', e);
+  }
+}
+
+// Cờ ghi nhớ bảng savings_log có tồn tại trên Supabase hay không (tránh 404 lặp lại làm chậm app)
+let hasSavingsLogTable: boolean | null = null;
+
+/**
+ * Lấy lịch sử để dành tiền các ngày
+ */
+export async function getSavingsHistory(limit = 14): Promise<DailySavingRecord[]> {
+  const sb = getSupabase();
+  if (sb && hasSavingsLogTable !== false) {
+    try {
+      const { data, error } = await sb
+        .from('savings_log')
+        .select('*')
+        .order('date', { ascending: false })
+        .limit(limit);
+
+      if (!error && data) {
+        hasSavingsLogTable = true;
+        return data.map((d: any) => ({
+          id: d.id,
+          date: d.date,
+          amount: Number(d.amount),
+          created_at: d.created_at,
+        }));
+      } else if (error && (error.code === 'PGRST205' || error.message?.includes('not find'))) {
+        hasSavingsLogTable = false;
+      }
+    } catch {
+      hasSavingsLogTable = false;
+    }
+  }
+
+  const local = readLocalSavings();
+  return local.sort((a, b) => b.date.localeCompare(a.date)).slice(0, limit);
+}
+
+/**
+ * Lấy bản ghi để dành tiền của một ngày cụ thể (ví dụ hôm nay)
+ */
+export async function getSavingForDate(dateStr: string): Promise<DailySavingRecord | null> {
+  const sb = getSupabase();
+  if (sb && hasSavingsLogTable !== false) {
+    try {
+      const { data, error } = await sb
+        .from('savings_log')
+        .select('*')
+        .eq('date', dateStr)
+        .maybeSingle();
+
+      if (!error && data) {
+        hasSavingsLogTable = true;
+        return {
+          id: data.id,
+          date: data.date,
+          amount: Number(data.amount),
+          created_at: data.created_at,
+        };
+      } else if (error && (error.code === 'PGRST205' || error.message?.includes('not find'))) {
+        hasSavingsLogTable = false;
+      }
+    } catch {
+      hasSavingsLogTable = false;
+    }
+  }
+
+  const local = readLocalSavings();
+  const found = local.find((s) => s.date === dateStr);
+  return found || null;
+}
+
+/**
+ * Ghi nhận để dành tiền cho một ngày (tick 161k hoặc nhập số tiền lớn hơn):
+ * - Nếu ngày này đã có trước đó: cộng dồn hoặc cập nhật số tiền chênh lệch vào quỹ
+ * - Nếu ngày này chưa có: cộng toàn bộ số tiền vào quỹ
+ */
+export async function recordDailySaving(
+  dateStr: string,
+  amount: number
+): Promise<{ success: boolean; newFund: number; record: DailySavingRecord }> {
+  const settings = await getSettings();
+  const existing = await getSavingForDate(dateStr);
+  const oldAmount = existing ? existing.amount : 0;
+  const diff = amount - oldAmount;
+  const newFund = Math.max(0, settings.fund_balance + diff);
+
+  await updateFundBalance(newFund);
+
+  const sb = getSupabase();
+  const record: DailySavingRecord = {
+    id: existing?.id || crypto.randomUUID(),
+    date: dateStr,
+    amount: Math.round(amount),
+    created_at: new Date().toISOString(),
+  };
+
+  if (sb && hasSavingsLogTable !== false) {
+    try {
+      const { error } = await sb.from('savings_log').upsert({
+        date: dateStr,
+        amount: Math.round(amount),
+        created_at: record.created_at,
+      });
+      if (error && (error.code === 'PGRST205' || error.message?.includes('not find'))) {
+        hasSavingsLogTable = false;
+      }
+    } catch {
+      hasSavingsLogTable = false;
+    }
+  }
+
+  // Luôn lưu local dự phòng
+  const local = readLocalSavings().filter((s) => s.date !== dateStr);
+  local.push(record);
+  writeLocalSavings(local);
+
+  return { success: true, newFund, record };
+}
+
+/**
+ * Hủy bỏ việc đã để dành của một ngày (trừ lại tiền khỏi quỹ)
+ */
+export async function cancelDailySaving(
+  dateStr: string
+): Promise<{ success: boolean; newFund: number }> {
+  const settings = await getSettings();
+  const existing = await getSavingForDate(dateStr);
+  if (!existing) {
+    return { success: false, newFund: settings.fund_balance };
+  }
+
+  const newFund = Math.max(0, settings.fund_balance - existing.amount);
+  await updateFundBalance(newFund);
+
+  const sb = getSupabase();
+  if (sb && hasSavingsLogTable !== false) {
+    try {
+      const { error } = await sb.from('savings_log').delete().eq('date', dateStr);
+      if (error && (error.code === 'PGRST205' || error.message?.includes('not find'))) {
+        hasSavingsLogTable = false;
+      }
+    } catch {
+      hasSavingsLogTable = false;
+    }
+  }
+
+  const local = readLocalSavings().filter((s) => s.date !== dateStr);
+  writeLocalSavings(local);
+
+  return { success: true, newFund };
+}
+

@@ -6,7 +6,15 @@ import OverviewTab from '@/components/OverviewTab';
 import ScheduleTab from '@/components/ScheduleTab';
 import LoansTab from '@/components/LoansTab';
 import TelegramTab from '@/components/TelegramTab';
-import { Loan, ScheduleOverview, generateSchedule, getTodayVNString } from '@/lib/schedule';
+import SavingsHeatmap from '@/components/SavingsHeatmap';
+import {
+  Loan,
+  ScheduleOverview,
+  DailySavingRecord,
+  generateSchedule,
+  getTodayVNString,
+  formatVND,
+} from '@/lib/schedule';
 import { AppSettings, PaymentLog } from '@/lib/db';
 import { Loader2 } from 'lucide-react';
 
@@ -22,6 +30,8 @@ export default function HomePage() {
     remind_days_before: [0, 1, 2],
   });
   const [logs, setLogs] = useState<PaymentLog[]>([]);
+  const [savingsHistory, setSavingsHistory] = useState<DailySavingRecord[]>([]);
+  const [todayStr, setTodayStr] = useState<string>(getTodayVNString());
   const [overview, setOverview] = useState<ScheduleOverview | null>(null);
   const [isSupabaseConnected, setIsSupabaseConnected] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -44,6 +54,8 @@ export default function HomePage() {
         setLoans(data.loans);
         setSettings(data.settings);
         setLogs(data.logs || []);
+        setSavingsHistory(data.savingsHistory || []);
+        setTodayStr(data.today || getTodayVNString());
         setOverview(data.overview);
         setIsSupabaseConnected(Boolean(data.isSupabaseConnected));
       }
@@ -72,7 +84,7 @@ export default function HomePage() {
         if (data.overview) {
           setOverview(data.overview);
         } else {
-          setOverview(generateSchedule(loans, newFund, getTodayVNString()));
+          setOverview(generateSchedule(loans, newFund, todayStr));
         }
         showToast('Đã lưu số dư quỹ trả nợ!');
       }
@@ -81,7 +93,85 @@ export default function HomePage() {
     }
   };
 
-  // Tick đã trả một kỳ
+  // Ghi nhận để dành tiền hôm nay (tick hoặc nhập số tiền tùy chọn) - Cập nhật tức thì 0ms (Optimistic UI)
+  const handleSaveDailySaving = async (amount: number) => {
+    // 1. Cập nhật giao diện ngay lập tức không cần chờ mạng
+    setOverview((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        is_today_saved: true,
+        today_saved_amount: amount,
+      };
+    });
+
+    try {
+      const res = await fetch('/api/savings', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ date: todayStr, amount }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast(`Đã để dành ${formatVND(amount)} cho ngày hôm nay!`);
+        if (data.overview) {
+          setOverview(data.overview);
+        }
+        if (typeof data.newFund === 'number') {
+          setSettings((prev) => ({ ...prev, fund_balance: data.newFund }));
+        }
+        if (data.savingsHistory) {
+          setSavingsHistory(data.savingsHistory);
+        }
+      } else {
+        alert(data.error || 'Có lỗi khi lưu.');
+        await loadData();
+      }
+    } catch {
+      alert('Lỗi kết nối máy chủ.');
+      await loadData();
+    }
+  };
+
+  // Hủy bỏ tick để dành hôm nay - Cập nhật tức thì 0ms (Optimistic UI)
+  const handleCancelDailySaving = async () => {
+    // Cập nhật giao diện ngay lập tức
+    setOverview((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        is_today_saved: false,
+        today_saved_amount: 0,
+      };
+    });
+
+    try {
+      const res = await fetch(`/api/savings?date=${todayStr}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (data.success) {
+        showToast('Đã hủy bỏ lượt để dành của hôm nay.');
+        if (data.overview) {
+          setOverview(data.overview);
+        }
+        if (typeof data.newFund === 'number') {
+          setSettings((prev) => ({ ...prev, fund_balance: data.newFund }));
+        }
+        if (data.savingsHistory) {
+          setSavingsHistory(data.savingsHistory);
+        }
+      } else {
+        alert(data.error || 'Lỗi khi hủy.');
+        await loadData();
+      }
+    } catch {
+      alert('Lỗi kết nối máy chủ.');
+      await loadData();
+    }
+  };
+
+  // Tick đã trả một kỳ của khoản vay
   const handleTickPayment = async (loanId: string) => {
     try {
       const res = await fetch('/api/payments/tick', {
@@ -101,7 +191,7 @@ export default function HomePage() {
     }
   };
 
-  // Hoàn tác lần tick gần nhất
+  // Hoàn tác lần tick trả nợ gần nhất
   const handleUndoPayment = async () => {
     try {
       const res = await fetch('/api/payments/undo', {
@@ -186,7 +276,7 @@ export default function HomePage() {
   }
 
   const currentOverview =
-    overview || generateSchedule(loans, settings.fund_balance, getTodayVNString());
+    overview || generateSchedule(loans, settings.fund_balance, todayStr);
 
   return (
     <div className="min-h-screen bg-[var(--background)]">
@@ -196,12 +286,16 @@ export default function HomePage() {
         isSupabaseConnected={isSupabaseConnected}
       />
 
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 pt-5 sm:pt-6">
+      <main className="max-w-5xl mx-auto px-3 sm:px-6 pt-4 sm:pt-6 pb-24 md:pb-12">
         {currentTab === 'overview' && (
           <OverviewTab
             overview={currentOverview}
             fundBalance={settings.fund_balance}
+            todayStr={todayStr}
+            savingsHistory={savingsHistory}
             onUpdateFund={handleUpdateFund}
+            onSaveDailySaving={handleSaveDailySaving}
+            onCancelDailySaving={handleCancelDailySaving}
             onTickPayment={handleTickPayment}
             onUndoPayment={handleUndoPayment}
             canUndo={logs.length > 0}
@@ -227,6 +321,24 @@ export default function HomePage() {
             onSaveLoan={handleSaveLoan}
             onDeleteLoan={handleDeleteLoan}
           />
+        )}
+
+        {currentTab === 'stats' && (
+          <div className="space-y-6 pb-12">
+            <div className="bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-4 sm:p-5 shadow-sm">
+              <h2 className="text-base sm:text-lg font-bold tracking-tight">
+                Thống kê thói quen tiết kiệm
+              </h2>
+              <p className="text-xs text-[var(--muted)] mt-0.5">
+                Biểu đồ nhiệt bỏ heo mỗi ngày theo phong cách GitHub. Màu càng xanh đậm thể hiện số tiền bỏ càng nhiều.
+              </p>
+            </div>
+            <SavingsHeatmap
+              savingsHistory={savingsHistory}
+              dailyTarget={currentOverview.base_daily_target || 162000}
+              todayStr={todayStr}
+            />
+          </div>
         )}
 
         {currentTab === 'telegram' && (

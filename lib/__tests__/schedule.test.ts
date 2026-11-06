@@ -63,11 +63,9 @@ describe('Sổ Trả Nợ - Logic tính toán theo kiểm tra mục 3', () => {
   });
 
   it('6. Tính tiền tiết kiệm mỗi ngày với quỹ hiện có', () => {
-    // Test với quỹ = 1.200.000 đ vào ngày 07/11/2026
     const overview = generateSchedule(SEED_LOANS, 1200000, '2026-11-07');
     expect(overview.daily_saving_needed).toBeGreaterThan(0);
     expect(overview.critical_payment).not.toBeNull();
-    // Đảm bảo mốc căng nhất nằm trong tương lai và có ngày hạn rõ ràng
     expect(overview.critical_payment?.due_date).toBeDefined();
   });
 
@@ -104,5 +102,36 @@ describe('Sổ Trả Nợ - Logic tính toán theo kiểm tra mục 3', () => {
     const d31Jan = parseDateString('2027-01-31');
     const dFeb = addMonths(d31Jan, 1);
     expect(formatDateString(dFeb)).toBe('2027-02-28');
+  });
+
+  it('11. Khi tick đã để dành 162.000 đ hôm nay, mục tiêu ngày mai vẫn duy trì 162.000 đ (không bị giảm giả tạo 157k)', () => {
+    // Ban đầu quỹ = 0
+    const beforeSaving = generateSchedule(SEED_LOANS, 0, TODAY, null);
+    expect(beforeSaving.daily_saving_needed).toBe(161828);
+    expect(beforeSaving.is_today_saved).toBe(false);
+
+    // Sau khi tick đã để dành 162.000 đ hôm nay (quỹ lên 162.000 đ)
+    const afterSaving = generateSchedule(SEED_LOANS, 162000, TODAY, {
+      date: TODAY,
+      amount: 162000,
+    });
+
+    expect(afterSaving.is_today_saved).toBe(true);
+    expect(afterSaving.today_saved_amount).toBe(162000);
+    // Mục tiêu từ ngày mai: (4.693.000 - 162.000) / 28 = 161.821 đ ~ 162.000 đ
+    expect(afterSaving.tomorrow_daily_saving_needed).toBe(161821);
+    expect(afterSaving.daily_saving_needed).toBe(161821);
+  });
+
+  it('12. Khi để dành nhiều hơn (VD 500.000 đ), số tiền mỗi ngày còn lại tự động giảm xuống', () => {
+    const afterExtraSaving = generateSchedule(SEED_LOANS, 500000, TODAY, {
+      date: TODAY,
+      amount: 500000,
+    });
+
+    expect(afterExtraSaving.is_today_saved).toBe(true);
+    expect(afterExtraSaving.tomorrow_daily_saving_needed).toBe(154508);
+    expect(afterExtraSaving.tomorrow_daily_saving_needed).toBeLessThan(161828);
+    expect(afterExtraSaving.daily_saving_needed).toBeLessThan(161828);
   });
 });

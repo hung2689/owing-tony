@@ -68,7 +68,7 @@ export default function LoginPage() {
                 placeholder="Nhập mật khẩu..."
                 required
                 autoFocus
-                className="w-full px-3.5 py-2.5 pr-10 rounded-xl bg-[var(--surface-raised)] border border-[var(--border)] text-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent)] transition-all"
+                className="w-full px-3.5 py-2.5 pr-10 rounded-xl bg-[var(--surface-raised)] border border-[var(--border)] text-base sm:text-sm focus:outline-none focus:ring-2 focus:ring-[var(--accent)] transition-all"
               />
               <button
                 type="button"

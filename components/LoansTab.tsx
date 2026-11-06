@@ -61,7 +61,7 @@ export default function LoansTab({
 
         <button
           onClick={handleOpenAdd}
-          className="self-start sm:self-auto inline-flex items-center gap-1.5 px-4 py-2 text-xs sm:text-sm font-semibold rounded-xl bg-[var(--accent)] text-white hover:opacity-90 active:scale-95 transition-all shadow-sm"
+          className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-4 py-2.5 text-xs sm:text-sm font-semibold rounded-xl bg-[var(--accent)] text-white hover:opacity-90 active:scale-95 transition-all shadow-sm"
         >
           <Plus className="w-4 h-4" />
           <span>Thêm khoản vay mới</span>
@@ -114,17 +114,19 @@ export default function LoansTab({
                     <button
                       onClick={() => handleOpenEdit(loan)}
                       title="Chỉnh sửa"
-                      className="p-1.5 rounded-lg text-[var(--muted)] hover:text-[var(--accent)] hover:bg-[var(--accent-light)] transition-colors"
+                      aria-label={`Sửa ${loan.name}`}
+                      className="p-2 rounded-lg text-[var(--muted)] hover:text-[var(--accent)] hover:bg-[var(--accent-light)] active:scale-95 transition-all"
                     >
-                      <Edit2 className="w-3.5 h-3.5" />
+                      <Edit2 className="w-4 h-4" />
                     </button>
                     <button
                       onClick={() => handleDeleteConfirm(loan.id)}
                       disabled={deletingId === loan.id}
                       title="Xóa khoản vay"
-                      className="p-1.5 rounded-lg text-[var(--muted)] hover:text-[var(--danger)] hover:bg-[var(--danger-bg)] transition-colors"
+                      aria-label={`Xóa ${loan.name}`}
+                      className="p-2 rounded-lg text-[var(--muted)] hover:text-[var(--danger)] hover:bg-[var(--danger-bg)] active:scale-95 transition-all disabled:opacity-50"
                     >
-                      <Trash2 className="w-3.5 h-3.5" />
+                      <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
                 </div>

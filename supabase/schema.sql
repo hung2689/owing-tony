@@ -35,13 +35,23 @@ create table if not exists payments_log (
   paid_at timestamptz not null default now()
 );
 
+-- Bảng savings_log: lịch sử để dành tiền hàng ngày
+create table if not exists savings_log (
+  id uuid primary key default gen_random_uuid(),
+  date date not null unique,
+  amount bigint not null,
+  created_at timestamptz not null default now()
+);
+
 -- Row Level Security (RLS)
 -- Ứng dụng kết nối bằng SUPABASE_SERVICE_ROLE_KEY trên server Next.js
 alter table loans enable row level security;
 alter table settings enable row level security;
 alter table payments_log enable row level security;
+alter table savings_log enable row level security;
 
 -- Cho phép service role toàn quyền truy cập
 create policy "Service role has full access to loans" on loans for all using (true) with check (true);
 create policy "Service role has full access to settings" on settings for all using (true) with check (true);
 create policy "Service role has full access to payments_log" on payments_log for all using (true) with check (true);
+create policy "Service role has full access to savings_log" on savings_log for all using (true) with check (true);

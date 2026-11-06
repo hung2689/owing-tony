@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { getLoans, getSettings } from '@/lib/db';
 import { generateSchedule, getTodayVNString } from '@/lib/schedule';
-import { sendTelegramMessage, buildDailyReportMessage } from '@/lib/telegram';
+import { sendTelegramMessage, buildDailyReportMessage, buildMainReplyKeyboard } from '@/lib/telegram';
 import { isAuthenticated } from '@/lib/auth';
 
 export async function POST(req: Request) {
@@ -35,7 +35,7 @@ export async function POST(req: Request) {
     const overview = generateSchedule(loans, settings.fund_balance, todayStr);
 
     const { text } = buildDailyReportMessage(overview, todayStr, settings.remind_days_before);
-    const result = await sendTelegramMessage(token, chatId, text);
+    const result = await sendTelegramMessage(token, chatId, text, buildMainReplyKeyboard());
 
     if (!result.ok) {
       return NextResponse.json(

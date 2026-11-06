@@ -34,7 +34,12 @@ export default function TelegramTab({
   );
   const [isSaving, setIsSaving] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
+  const [isSettingWebhook, setIsSettingWebhook] = useState(false);
   const [testResult, setTestResult] = useState<{
+    success: boolean;
+    message: string;
+  } | null>(null);
+  const [webhookResult, setWebhookResult] = useState<{
     success: boolean;
     message: string;
   } | null>(null);
@@ -110,6 +115,40 @@ export default function TelegramTab({
     }
   };
 
+  const handleSetupWebhook = async () => {
+    setIsSettingWebhook(true);
+    setWebhookResult(null);
+
+    try {
+      const origin = window.location.origin;
+      const res = await fetch('/api/telegram/setup-webhook', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url: origin }),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        setWebhookResult({
+          success: false,
+          message: data.error || 'Lỗi khi cài đặt Webhook.',
+        });
+      } else {
+        setWebhookResult({
+          success: true,
+          message: data.message || 'Đã kết nối Webhook thành công!',
+        });
+      }
+    } catch (err: any) {
+      setWebhookResult({
+        success: false,
+        message: err?.message || 'Lỗi kết nối máy chủ.',
+      });
+    } finally {
+      setIsSettingWebhook(false);
+    }
+  };
+
   // Xem trước tin nhắn mẫu
   const { text: previewText } = buildDailyReportMessage(
     overview,
@@ -138,10 +177,11 @@ export default function TelegramTab({
           <div className="flex flex-col sm:flex-row gap-2">
             <input
               type="text"
+              inputMode="numeric"
               value={chatId}
               onChange={(e) => setChatId(e.target.value)}
               placeholder="VD: 123456789"
-              className="flex-1 px-4 py-2.5 rounded-xl bg-[var(--surface-raised)] border border-[var(--border)] text-sm font-semibold tabular-nums focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
+              className="flex-1 px-4 py-2.5 rounded-xl bg-[var(--surface-raised)] border border-[var(--border)] text-base sm:text-sm font-semibold tabular-nums focus:outline-none focus:ring-2 focus:ring-[var(--accent)]"
             />
             <button
               type="button"
@@ -261,24 +301,56 @@ export default function TelegramTab({
       </section>
 
       {/* Hướng dẫn thiết lập Bot Telegram */}
-      <section className="bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-5 sm:p-6 shadow-sm space-y-3">
-        <h3 className="text-sm font-bold tracking-tight flex items-center gap-2">
-          <HelpCircle className="w-4 h-4 text-[var(--accent)]" />
-          <span>Hướng dẫn thiết lập 2 lệnh Bot Telegram (/status và /paid)</span>
-        </h3>
-        <div className="text-xs text-[var(--muted)] space-y-2 leading-relaxed">
+      <section className="bg-[var(--surface)] border border-[var(--border)] rounded-2xl p-5 sm:p-6 shadow-sm space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h3 className="text-sm sm:text-base font-bold tracking-tight flex items-center gap-2">
+              <HelpCircle className="w-4 h-4 text-[var(--accent)]" />
+              <span>Kích hoạt Webhook Telegram chạy Online 24/7</span>
+            </h3>
+            <p className="text-xs text-[var(--muted)] mt-0.5">
+              Sau khi deploy lên Vercel, bấm nút bên dưới để kết nối bot chạy tự động vĩnh viễn trên đám mây.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onClick={handleSetupWebhook}
+            disabled={isSettingWebhook}
+            className="self-start sm:self-auto px-4 py-2.5 rounded-xl bg-[var(--accent)] text-white text-xs sm:text-sm font-semibold hover:opacity-90 active:scale-95 transition-all flex items-center gap-1.5 shadow-sm disabled:opacity-50"
+          >
+            <ExternalLink className="w-4 h-4" />
+            <span>{isSettingWebhook ? 'Đang kích hoạt...' : 'Kích hoạt Webhook (1-Chạm)'}</span>
+          </button>
+        </div>
+
+        {webhookResult && (
+          <div
+            className={`text-xs p-3.5 rounded-xl flex items-start gap-2 border whitespace-pre-line ${
+              webhookResult.success
+                ? 'bg-[var(--success-bg)] text-[var(--success)] border-[var(--success)]/20'
+                : 'bg-[var(--warning-bg)] text-[var(--warning)] border-[var(--warning)]/20'
+            }`}
+          >
+            {webhookResult.success ? (
+              <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+            ) : (
+              <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+            )}
+            <span className="font-medium">{webhookResult.message}</span>
+          </div>
+        )}
+
+        <div className="text-xs text-[var(--muted)] space-y-2 leading-relaxed pt-2 border-t border-[var(--border)]">
           <p>
-            1. <strong>Tạo bot:</strong> Mở Telegram, tìm bot <code className="px-1 py-0.5 rounded bg-[var(--surface-raised)] text-[var(--foreground)]">@BotFather</code>, gửi lệnh <code className="px-1 py-0.5 rounded bg-[var(--surface-raised)] text-[var(--foreground)]">/newbot</code> và làm theo hướng dẫn để nhận Bot Token.
+            • <strong>Khi chạy online trên Vercel:</strong> Bạn chỉ cần mở trang web trên link Vercel (https://...) và bấm nút <strong>&quot;Kích hoạt Webhook (1-Chạm)&quot;</strong> ở trên là xong!
           </p>
           <p>
-            2. <strong>Bật lệnh webhook:</strong> Sau khi deploy app lên Vercel (ví dụ: <code className="px-1 py-0.5 rounded bg-[var(--surface-raised)] text-[var(--foreground)]">https://your-app.vercel.app</code>), mở trình duyệt và truy cập URL sau một lần để cài đặt webhook:
+            • <strong>Cách thủ công (tùy chọn):</strong> Bạn cũng có thể mở trình duyệt và truy cập đường dẫn sau một lần:
           </p>
           <div className="p-2.5 rounded-lg bg-[var(--surface-raised)] font-mono text-[11px] break-all border border-[var(--border)] text-[var(--foreground)]">
-            https://api.telegram.org/bot&lt;BOT_TOKEN&gt;/setWebhook?url=https://your-app.vercel.app/api/telegram
+            https://api.telegram.org/bot{settings.telegram_chat_id ? '9067939554:AAF2ynoCEfotIwwvlNyBEk93GX5fxcZY90E' : '<BOT_TOKEN>'}/setWebhook?url=https://your-domain.vercel.app/api/telegram
           </div>
-          <p>
-            3. <strong>Sử dụng:</strong> Bạn có thể gõ <code className="px-1 py-0.5 rounded bg-[var(--surface-raised)] text-[var(--foreground)]">/status</code> để xem báo cáo nợ bất kỳ lúc nào, hoặc gõ <code className="px-1 py-0.5 rounded bg-[var(--surface-raised)] text-[var(--foreground)]">/paid</code> để tick nhanh khoản vừa trả bằng nút bấm trên Telegram!
-          </p>
         </div>
       </section>
     </div>

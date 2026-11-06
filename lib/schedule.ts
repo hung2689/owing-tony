@@ -22,6 +22,13 @@ export interface ScheduledPayment {
   is_nearest: boolean;
 }
 
+export interface DailySavingRecord {
+  id?: string;
+  date: string; // YYYY-MM-DD
+  amount: number;
+  created_at?: string;
+}
+
 export interface ScheduleOverview {
   daily_saving_needed: number;
   critical_payment: ScheduledPayment | null;
@@ -33,6 +40,11 @@ export interface ScheduleOverview {
   next_payment: ScheduledPayment | null;
   payments: ScheduledPayment[];
   fund_balance: number;
+  // Các trường mới hỗ trợ tick tiết kiệm mỗi ngày
+  is_today_saved: boolean;
+  today_saved_amount: number;
+  base_daily_target: number;
+  tomorrow_daily_saving_needed: number;
 }
 
 /**
@@ -110,7 +122,8 @@ export function getTodayVNString(): string {
 export function generateSchedule(
   loans: Loan[],
   fundBalance: number,
-  todayStr: string = getTodayVNString()
+  todayStr: string = getTodayVNString(),
+  todaySavingRecord?: DailySavingRecord | null
 ): ScheduleOverview {
   const payments: ScheduledPayment[] = [];
 
@@ -132,12 +145,12 @@ export function generateSchedule(
         due_date: dueDateStr,
         cumulative_amount: 0,
         days_remaining: daysRemaining,
-        is_nearest: false, // sẽ cập nhật sau
+        is_nearest: false,
       });
     }
   }
 
-  // 2. Sắp xếp các kỳ theo thứ tự ngày tăng dần, sau đó theo loan_id, sau đó theo kỳ n
+  // 2. Sắp xếp các kỳ theo thứ tự ngày tăng dần
   payments.sort((a, b) => {
     if (a.due_date !== b.due_date) {
       return a.due_date.localeCompare(b.due_date);
@@ -148,7 +161,7 @@ export function generateSchedule(
     return a.installment_number - b.installment_number;
   });
 
-  // Đánh dấu kỳ gần nhất của mỗi khoản (chỉ kỳ gần nhất mới được tick)
+  // Đánh dấu kỳ gần nhất của mỗi khoản
   const nearestMap = new Set<string>();
   for (const p of payments) {
     if (!nearestMap.has(p.loan_id)) {
@@ -164,20 +177,43 @@ export function generateSchedule(
     p.cumulative_amount = cum;
   }
 
-  // 4. Tính số tiền cần tiết kiệm mỗi ngày:
-  // Với mỗi hạn d: can_moi_ngay(d) = max(0, cum(d) - quy) / max(1, số ngày từ hôm nay đến d).
-  // Số tiền cần tiết kiệm mỗi ngày = giá trị LỚN NHẤT của can_moi_ngay(d) trên mọi hạn.
-  let dailySavingNeeded = 0;
+  // 4. Kiểm tra xem hôm nay đã để dành chưa
+  const isTodaySaved = Boolean(todaySavingRecord && todaySavingRecord.amount > 0);
+  const todaySavedAmount = todaySavingRecord?.amount || 0;
+
+  // Tính số tiền cần cho HÔM NAY (trước khi trừ tiền đã để dành hôm nay)
+  // Quỹ cơ sở trước khi nạp hôm nay = max(0, fundBalance - todaySavedAmount)
+  const baseFundBeforeToday = isTodaySaved ? Math.max(0, fundBalance - todaySavedAmount) : fundBalance;
+
+  let baseDailyTarget = 0;
   let criticalPayment: ScheduledPayment | null = null;
 
   for (const p of payments) {
     const days = Math.max(1, p.days_remaining);
-    const needDaily = Math.max(0, p.cumulative_amount - fundBalance) / days;
-    if (needDaily > dailySavingNeeded) {
-      dailySavingNeeded = needDaily;
+    const needDaily = Math.max(0, p.cumulative_amount - baseFundBeforeToday) / days;
+    if (needDaily > baseDailyTarget) {
+      baseDailyTarget = needDaily;
       criticalPayment = p;
     }
   }
+
+  // Tính số tiền cần từ NGÀY MAI (chia cho số ngày còn lại sau hôm nay)
+  let tomorrowDailySavingNeeded = 0;
+  for (const p of payments) {
+    // Số ngày còn lại tính từ ngày mai = max(1, days_remaining - 1)
+    const daysFromTomorrow = Math.max(1, p.days_remaining - 1);
+    const needFromTomorrow = Math.max(0, p.cumulative_amount - fundBalance) / daysFromTomorrow;
+    if (needFromTomorrow > tomorrowDailySavingNeeded) {
+      tomorrowDailySavingNeeded = needFromTomorrow;
+    }
+  }
+
+  // Số tiền hiển thị chính:
+  // Nếu hôm nay đã bỏ tiền -> hiển thị mục tiêu từ ngày mai
+  // Nếu hôm nay chưa bỏ tiền -> hiển thị mục tiêu hôm nay
+  const dailySavingNeeded = isTodaySaved
+    ? tomorrowDailySavingNeeded
+    : baseDailyTarget;
 
   // 5. Thống kê tổng hợp
   const totalRemainingDebt = payments.reduce((sum, p) => sum + p.amount, 0);
@@ -200,13 +236,17 @@ export function generateSchedule(
     next_payment: nextPayment,
     payments,
     fund_balance: fundBalance,
+    is_today_saved: isTodaySaved,
+    today_saved_amount: todaySavedAmount,
+    base_daily_target: Math.round(baseDailyTarget),
+    tomorrow_daily_saving_needed: Math.round(tomorrowDailySavingNeeded),
   };
 }
 
 /**
  * Xử lý tick "đã trả" cho kỳ gần nhất của một khoản:
  * - Tăng số kỳ đã trả thêm 1
- * - Trừ số tiền kỳ đó khỏi quỹ trả nợ (nếu quỹ > số tiền thì trừ, nếu ít hơn thì về 0 hoặc trừ âm)
+ * - Trừ số tiền kỳ đó khỏi quỹ trả nợ
  */
 export function tickPayment(
   loans: Loan[],
