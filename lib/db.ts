@@ -95,7 +95,10 @@ export async function getLoans(): Promise<Loan[]> {
       return memoryLoans;
     }
 
-    return data.map((item) => ({
+    // Lọc bỏ các bản ghi lưu trữ savings nếu có
+    const filtered = data.filter((item: any) => !item.id?.startsWith('__saving__'));
+
+    return filtered.map((item) => ({
       id: item.id,
       name: item.name,
       amount: Number(item.amount),
@@ -479,27 +482,50 @@ let hasSavingsLogTable: boolean | null = null;
  */
 export async function getSavingsHistory(limit = 14): Promise<DailySavingRecord[]> {
   const sb = getSupabase();
-  if (sb && hasSavingsLogTable !== false) {
-    try {
-      const { data, error } = await sb
-        .from('savings_log')
-        .select('*')
-        .order('date', { ascending: false })
-        .limit(limit);
+  if (sb) {
+    if (hasSavingsLogTable !== false) {
+      try {
+        const { data, error } = await sb
+          .from('savings_log')
+          .select('*')
+          .order('date', { ascending: false })
+          .limit(limit);
 
-      if (!error && data) {
-        hasSavingsLogTable = true;
-        return data.map((d: any) => ({
-          id: d.id,
-          date: d.date,
-          amount: Number(d.amount),
-          created_at: d.created_at,
-        }));
-      } else if (error && (error.code === 'PGRST205' || error.message?.includes('not find'))) {
+        if (!error && data && data.length > 0) {
+          hasSavingsLogTable = true;
+          return data.map((d: any) => ({
+            id: d.id,
+            date: d.date,
+            amount: Number(d.amount),
+            created_at: d.created_at,
+          }));
+        } else if (error && (error.code === 'PGRST205' || error.message?.includes('not find'))) {
+          hasSavingsLogTable = false;
+        }
+      } catch {
         hasSavingsLogTable = false;
       }
-    } catch {
-      hasSavingsLogTable = false;
+    }
+
+    // Fallback qua Supabase table 'loans' lưu trữ vĩnh viễn không sợ mất trên Vercel
+    try {
+      const { data, error } = await sb
+        .from('loans')
+        .select('*')
+        .like('id', '__saving__%')
+        .order('anchor_date', { ascending: false })
+        .limit(limit);
+
+      if (!error && data && data.length > 0) {
+        return data.map((d: any) => ({
+          id: d.id,
+          date: d.anchor_date,
+          amount: Number(d.amount),
+          created_at: d.created_at || d.updated_at,
+        }));
+      }
+    } catch (e) {
+      console.warn('Lỗi đọc fallback saving từ supabase:', e);
     }
   }
 
@@ -512,28 +538,48 @@ export async function getSavingsHistory(limit = 14): Promise<DailySavingRecord[]
  */
 export async function getSavingForDate(dateStr: string): Promise<DailySavingRecord | null> {
   const sb = getSupabase();
-  if (sb && hasSavingsLogTable !== false) {
+  if (sb) {
+    if (hasSavingsLogTable !== false) {
+      try {
+        const { data, error } = await sb
+          .from('savings_log')
+          .select('*')
+          .eq('date', dateStr)
+          .maybeSingle();
+
+        if (!error && data) {
+          hasSavingsLogTable = true;
+          return {
+            id: data.id,
+            date: data.date,
+            amount: Number(data.amount),
+            created_at: data.created_at,
+          };
+        } else if (error && (error.code === 'PGRST205' || error.message?.includes('not find'))) {
+          hasSavingsLogTable = false;
+        }
+      } catch {
+        hasSavingsLogTable = false;
+      }
+    }
+
+    // Fallback qua Supabase table 'loans' lưu trữ vĩnh viễn
     try {
       const { data, error } = await sb
-        .from('savings_log')
+        .from('loans')
         .select('*')
-        .eq('date', dateStr)
+        .eq('id', `__saving__${dateStr}`)
         .maybeSingle();
 
       if (!error && data) {
-        hasSavingsLogTable = true;
         return {
           id: data.id,
-          date: data.date,
+          date: data.anchor_date,
           amount: Number(data.amount),
-          created_at: data.created_at,
+          created_at: data.created_at || data.updated_at,
         };
-      } else if (error && (error.code === 'PGRST205' || error.message?.includes('not find'))) {
-        hasSavingsLogTable = false;
       }
-    } catch {
-      hasSavingsLogTable = false;
-    }
+    } catch {}
   }
 
   const local = readLocalSavings();
@@ -571,18 +617,36 @@ export async function recordDailySaving(
     created_at: new Date().toISOString(),
   };
 
-  if (sb && hasSavingsLogTable !== false) {
-    try {
-      const { error } = await sb.from('savings_log').upsert({
-        date: dateStr,
-        amount: Math.round(amount),
-        created_at: record.created_at,
-      });
-      if (error && (error.code === 'PGRST205' || error.message?.includes('not find'))) {
+  if (sb) {
+    if (hasSavingsLogTable !== false) {
+      try {
+        const { error } = await sb.from('savings_log').upsert({
+          date: dateStr,
+          amount: Math.round(amount),
+          created_at: record.created_at,
+        });
+        if (error && (error.code === 'PGRST205' || error.message?.includes('not find'))) {
+          hasSavingsLogTable = false;
+        }
+      } catch {
         hasSavingsLogTable = false;
       }
-    } catch {
-      hasSavingsLogTable = false;
+    }
+
+    // Luôn lưu cả vào Supabase table 'loans' để đảm bảo dữ liệu vĩnh viễn trên Vercel
+    try {
+      await sb.from('loans').upsert({
+        id: `__saving__${dateStr}`,
+        name: `Tiết kiệm ${dateStr}`,
+        amount: Math.round(amount),
+        total_installments: 1,
+        paid_installments: 1,
+        base_paid: 0,
+        anchor_date: dateStr,
+        updated_at: new Date().toISOString(),
+      });
+    } catch (e) {
+      console.warn('Lỗi lưu fallback saving vào supabase loans:', e);
     }
   }
 
@@ -610,15 +674,22 @@ export async function cancelDailySaving(
   await updateFundBalance(newFund);
 
   const sb = getSupabase();
-  if (sb && hasSavingsLogTable !== false) {
-    try {
-      const { error } = await sb.from('savings_log').delete().eq('date', dateStr);
-      if (error && (error.code === 'PGRST205' || error.message?.includes('not find'))) {
+  if (sb) {
+    if (hasSavingsLogTable !== false) {
+      try {
+        const { error } = await sb.from('savings_log').delete().eq('date', dateStr);
+        if (error && (error.code === 'PGRST205' || error.message?.includes('not find'))) {
+          hasSavingsLogTable = false;
+        }
+      } catch {
         hasSavingsLogTable = false;
       }
-    } catch {
-      hasSavingsLogTable = false;
     }
+
+    // Xóa trong Supabase table 'loans'
+    try {
+      await sb.from('loans').delete().eq('id', `__saving__${dateStr}`);
+    } catch {}
   }
 
   const local = readLocalSavings().filter((s) => s.date !== dateStr);
